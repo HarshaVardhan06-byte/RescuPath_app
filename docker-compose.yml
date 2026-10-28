@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgis/postgis:18-3.6
+    container_name: rescupath-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rescupath
+      POSTGRES_USER: rescupath
+      POSTGRES_PASSWORD: rescupath_dev_password_change_me
+    ports:
+      - "5432:5432"
+    volumes:
+      - rescupath_postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rescupath -d rescupath"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    container_name: rescupath-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - rescupath_redis:/data
+
+volumes:
+  rescupath_postgres:
+  rescupath_redis:

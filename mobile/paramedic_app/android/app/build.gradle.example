@@ -1,0 +1,12 @@
+// Merge the following into the android/app build.gradle of the Flutter-generated project.
+//
+// android {
+//   defaultConfig {
+//     manifestPlaceholders["MAPS_API_KEY"] = project.findProperty("MAPS_API_KEY") ?: ""
+//   }
+// }
+//
+// Run with a local secret, e.g.:
+// flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000
+//
+// Keep the Google Maps key out of Git and restrict it in Google Cloud.

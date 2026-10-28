@@ -1,0 +1,4 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Local emulator/dev API is plain HTTP. Release builds do not allow cleartext by default. -->
+    <application android:usesCleartextTraffic="true" />
+</manifest>
