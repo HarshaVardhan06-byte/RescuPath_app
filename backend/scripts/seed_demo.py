@@ -1,7 +1,9 @@
-"""Seed local and cloud demo hospitals, resources, and default agency accounts.
-Run after migrations: python scripts/seed_demo.py
+"""Seed local and cloud demo hospitals, resources, and agency accounts.
+Restores all authentic local development user accounts, hospitals, and ambulances.
 """
+import json
 import sys
+import uuid
 from pathlib import Path
 
 # Ensure backend root is on sys.path
@@ -18,362 +20,166 @@ from app.models.paramedic import ParamedicProfile
 from app.models.police_officer import PoliceOfficerProfile
 from app.models.user import User, UserRole
 
-# 10 Official Partner Hospitals matching the Hospital App demo quick-select
-HOSPITALS_DATA = [
-    (
-        "Sri Jayadeva Institute of Cardiovascular Sciences",
-        "29AAETS5552M2ZS",
-        12.9172,
-        77.5924,
-        45,
-        True,
-        True,
-        True,
-        "Apex Cardiac Care & 24/7 Cath Lab",
-        "Dr. C. N. Manjunath",
-        "jayadeva.admin@rescupath.com",
-        "+91 80 2297 7400",
-    ),
-    (
-        "Fortis Hospital Bannerghatta",
-        "29AABCF3718N1ZA",
-        12.8954,
-        77.5986,
-        35,
-        True,
-        True,
-        True,
-        "Tertiary Cardiac & Emergency Resuscitation",
-        "Admin Fortis",
-        "fortis.admin@rescupath.com",
-        "+91 80 6621 4444",
-    ),
-    (
-        "Apollo Hospitals Bannerghatta",
-        "29AAACA5443N6Z9",
-        12.8943,
-        77.5980,
-        40,
-        True,
-        True,
-        True,
-        "Multi-Specialty Emergency & Trauma Care",
-        "Admin Apollo",
-        "apollo.admin@rescupath.com",
-        "+91 80 2630 4050",
-    ),
-    (
-        "NIMHANS Neuro Emergency",
-        "29AABTN6120B2ZX",
-        12.9392,
-        77.5960,
-        50,
-        True,
-        True,
-        False,
-        "National Apex Neuro & Acute Stroke Center",
-        "Admin NIMHANS",
-        "nimhans.admin@rescupath.com",
-        "+91 80 2699 5000",
-    ),
-    (
-        "Aster RV Hospital",
-        "29AACCD7912K1ZD",
-        12.9152,
-        77.5847,
-        30,
-        True,
-        True,
-        True,
-        "Critical Care, Pulmonology & ECMO Unit",
-        "Admin Aster RV",
-        "aster.admin@rescupath.com",
-        "+91 80 6604 0400",
-    ),
-    (
-        "Manipal Hospital Old Airport Rd",
-        "29AAGCM5933R2ZK",
-        12.9585,
-        77.6485,
-        42,
-        True,
-        True,
-        True,
-        "Tertiary Emergency & Trauma Care",
-        "Admin Manipal",
-        "manipal.admin@rescupath.com",
-        "+91 80 2502 4444",
-    ),
-    (
-        "HOSMAT Hospital",
-        "29AABCP2221Q1Z6",
-        12.9698,
-        77.6146,
-        28,
-        True,
-        True,
-        True,
-        "Apex Orthopedic & Spine Trauma Centre",
-        "Admin HOSMAT",
-        "hosmat.admin@rescupath.com",
-        "+91 80 2559 3796",
-    ),
-    (
-        "St. John's Medical College Hospital",
-        "29AAATC0773E4ZU",
-        12.9324,
-        77.6218,
-        55,
-        True,
-        True,
-        True,
-        "Major Tertiary Multi-Specialty Emergency Hospital",
-        "Admin St Johns",
-        "stjohns.admin@rescupath.com",
-        "+91 80 2206 5000",
-    ),
-    (
-        "Victoria Hospital Emergency Trauma",
-        "29AAAGV1001V1ZX",
-        12.9642,
-        77.5746,
-        60,
-        True,
-        True,
-        True,
-        "Apex Burns & Emergency Trauma Care",
-        "Admin Victoria",
-        "victoria.admin@rescupath.com",
-        "+91 80 2670 1150",
-    ),
-    (
-        "Kidwai Memorial Institute of Oncology",
-        "29AAATK3049D1ZS",
-        12.9416,
-        77.5946,
-        25,
-        True,
-        True,
-        False,
-        "Specialized Emergency Oncology Care",
-        "Admin Kidwai",
-        "kidwai.admin@rescupath.com",
-        "+91 80 2609 4000",
-    ),
-]
+BACKUP_FILE = Path(__file__).resolve().parents[1] / "app" / "db" / "local_backup.json"
 
 
 def seed():
     default_pwd_hash = hash_password("password123")
 
     with SessionLocal() as db:
-        # 1. Seed Hospitals and their Hospital Resources
-        for (
-            name,
-            gst,
-            lat,
-            lng,
-            beds,
-            oxygen,
-            trauma,
-            cardiac,
-            specialties,
-            admin_name,
-            admin_email,
-            admin_phone,
-        ) in HOSPITALS_DATA:
-            hospital = db.scalar(
-                select(Hospital).where(
-                    (Hospital.gst_number == gst) | (Hospital.name == name)
-                )
-            )
-            if not hospital:
-                hospital = Hospital(
-                    name=name,
-                    gst_number=gst,
-                    latitude=lat,
-                    longitude=lng,
-                    status="ACTIVE",
-                    is_emergency_available=True,
-                    specialties=specialties,
-                    admin_name=admin_name,
-                    admin_email=admin_email,
-                    admin_phone=admin_phone,
-                    staff_count=35,
-                    parking_available=True,
-                )
-                db.add(hospital)
-                db.flush()
-            else:
-                hospital.gst_number = gst
-                hospital.latitude = lat
-                hospital.longitude = lng
-                hospital.status = "ACTIVE"
-                hospital.is_emergency_available = True
-                hospital.specialties = specialties
-                hospital.admin_name = admin_name
-                hospital.admin_email = admin_email
-                hospital.admin_phone = admin_phone
-                db.flush()
+        # Check if authentic local backup data exists
+        if BACKUP_FILE.exists():
+            try:
+                with open(BACKUP_FILE, "r", encoding="utf-8") as f:
+                    backup = json.load(f)
 
-            resource = db.scalar(
-                select(HospitalResource).where(
-                    HospitalResource.hospital_id == hospital.id
-                )
-            )
-            if not resource:
-                resource = HospitalResource(hospital_id=hospital.id)
-                db.add(resource)
-            resource.emergency_beds_available = beds
-            resource.icu_beds_available = max(2, beds // 4)
-            resource.ventilators_available = max(1, beds // 8)
-            resource.oxygen_cylinders_available = max(10, beds // 2)
-            resource.oxygen_available = oxygen
-            resource.trauma_capable = trauma
-            resource.cardiac_capable = cardiac
+                # 1. Restore all authentic Users with their exact original passwords
+                for u in backup.get("users", []):
+                    user = db.scalar(select(User).where(User.email == u["email"].lower().strip()))
+                    role_str = u["role"].split(".")[-1] if "." in u["role"] else u["role"]
+                    role = UserRole[role_str] if role_str in UserRole.__members__ else UserRole.PARAMEDIC
+                    if not user:
+                        user = User(
+                            id=uuid.UUID(u["id"]),
+                            full_name=u["full_name"],
+                            email=u["email"].lower().strip(),
+                            phone=u.get("phone"),
+                            password_hash=u["password_hash"],
+                            role=role,
+                            is_active=u.get("is_active", True),
+                        )
+                        db.add(user)
+                    else:
+                        user.password_hash = u["password_hash"]
+                        user.is_active = u.get("is_active", True)
+                db.commit()
 
-            # Ensure each hospital has an operator user account linked to its GST
-            operator_email = f"{gst.lower()}@hospital.rescupath.com"
-            hosp_user = db.scalar(
-                select(User).where(User.email == operator_email)
-            )
-            if not hosp_user:
-                hosp_user = User(
-                    full_name=f"{hospital.name} Desk",
-                    email=operator_email,
-                    password_hash=default_pwd_hash,
-                    role=UserRole.HOSPITAL,
-                    is_active=True,
-                )
-                db.add(hosp_user)
-                db.flush()
-            else:
-                hosp_user.password_hash = default_pwd_hash
-                hosp_user.is_active = True
+                # 2. Restore all authentic Hospitals with their exact GST numbers
+                for h in backup.get("hospitals", []):
+                    hosp = None
+                    if h.get("gst_number"):
+                        hosp = db.scalar(select(Hospital).where(Hospital.gst_number == h["gst_number"].strip().upper()))
+                    if not hosp:
+                        hosp = db.scalar(select(Hospital).where(Hospital.name == h["name"]))
 
-            hosp_profile = db.scalar(
-                select(HospitalOperatorProfile).where(
-                    HospitalOperatorProfile.hospital_id == hospital.id
-                )
-            )
-            if not hosp_profile:
-                db.add(
-                    HospitalOperatorProfile(
-                        user_id=hosp_user.id,
-                        hospital_id=hospital.id,
-                        department="Emergency Coordination Desk",
-                    )
-                )
+                    if not hosp:
+                        hosp = Hospital(
+                            id=uuid.UUID(h["id"]),
+                            name=h["name"],
+                            gst_number=h.get("gst_number").strip().upper() if h.get("gst_number") else None,
+                            latitude=h["latitude"],
+                            longitude=h["longitude"],
+                            status=h.get("status", "ACTIVE"),
+                            is_emergency_available=h.get("is_emergency_available", True),
+                            specialties=h.get("specialties", "Multi-Specialty Emergency Care"),
+                            admin_name=h.get("admin_name"),
+                            admin_email=h.get("admin_email"),
+                            admin_phone=h.get("admin_phone"),
+                            staff_count=h.get("staff_count", 25),
+                            parking_available=h.get("parking_available", True),
+                            gst_verified=h.get("gst_verified", True),
+                        )
+                        db.add(hosp)
+                    else:
+                        if h.get("gst_number"):
+                            hosp.gst_number = h["gst_number"].strip().upper()
+                        if h.get("admin_email"):
+                            hosp.admin_email = h["admin_email"]
+                        if h.get("specialties"):
+                            hosp.specialties = h["specialties"]
+                db.commit()
 
-        # Also create a generic hospital@rescupath.com user mapped to Sri Jayadeva
-        generic_hosp_user = db.scalar(
-            select(User).where(User.email == "hospital@rescupath.com")
-        )
-        jayadeva = db.scalar(
-            select(Hospital).where(Hospital.gst_number == "29AAETS5552M2ZS")
-        )
-        if jayadeva:
-            if not generic_hosp_user:
-                generic_hosp_user = User(
-                    full_name="Sri Jayadeva Emergency Desk",
-                    email="hospital@rescupath.com",
-                    password_hash=default_pwd_hash,
-                    role=UserRole.HOSPITAL,
-                    is_active=True,
-                )
-                db.add(generic_hosp_user)
-                db.flush()
-                db.add(
-                    HospitalOperatorProfile(
-                        user_id=generic_hosp_user.id,
-                        hospital_id=jayadeva.id,
-                        department="Central Triage Desk",
-                    )
-                )
-            else:
-                generic_hosp_user.password_hash = default_pwd_hash
-                generic_hosp_user.is_active = True
+                # 3. Restore Hospital Resources
+                for r in backup.get("resources", []):
+                    hosp_id = uuid.UUID(r["hospital_id"])
+                    res = db.scalar(select(HospitalResource).where(HospitalResource.hospital_id == hosp_id))
+                    if not res:
+                        res = HospitalResource(
+                            id=uuid.UUID(r["id"]),
+                            hospital_id=hosp_id,
+                            emergency_beds_available=r.get("emergency_beds_available", 10),
+                            icu_beds_available=r.get("icu_beds_available", 2),
+                            ventilators_available=r.get("ventilators_available", 1),
+                            oxygen_cylinders_available=r.get("oxygen_cylinders_available", 10),
+                            oxygen_available=r.get("oxygen_available", True),
+                            trauma_capable=r.get("trauma_capable", False),
+                            cardiac_capable=r.get("cardiac_capable", False),
+                        )
+                        db.add(res)
+                db.commit()
 
-        # 2. Seed Default Paramedic Account (paramedic@rescupath.com / password123)
-        paramedic_user = db.scalar(
-            select(User).where(User.email == "paramedic@rescupath.com")
-        )
-        if not paramedic_user:
-            paramedic_user = User(
-                full_name="Chief Paramedic Rajesh Sharma",
-                email="paramedic@rescupath.com",
-                phone="+91 98765 43210",
-                password_hash=default_pwd_hash,
-                role=UserRole.PARAMEDIC,
-                is_active=True,
-            )
-            db.add(paramedic_user)
-            db.flush()
-            db.add(
-                ParamedicProfile(
-                    user_id=paramedic_user.id,
-                    license_number="KA-PARAMEDIC-108",
-                    availability_status="AVAILABLE",
-                )
-            )
-        else:
-            paramedic_user.password_hash = default_pwd_hash
-            paramedic_user.is_active = True
+                # 4. Restore Paramedic Profiles
+                for p in backup.get("paramedics", []):
+                    u_id = uuid.UUID(p["user_id"])
+                    prof = db.scalar(select(ParamedicProfile).where(ParamedicProfile.user_id == u_id))
+                    if not prof:
+                        db.add(ParamedicProfile(
+                            id=uuid.UUID(p["id"]),
+                            user_id=u_id,
+                            license_number=p.get("license_number"),
+                            availability_status=p.get("availability_status", "AVAILABLE"),
+                        ))
+                db.commit()
 
-        # Ensure ambulance is linked to paramedic
-        ambulance = db.scalar(
-            select(Ambulance).where(
-                Ambulance.paramedic_id == paramedic_user.id
-            )
-        )
-        if not ambulance:
-            db.add(
-                Ambulance(
-                    vehicle_number="KA-01-AMB-108",
-                    status="AVAILABLE",
-                    current_latitude=12.9352,
-                    current_longitude=77.6245,
-                    fuel_percentage=92,
-                    equipment_notes="Advanced Cardiac Life Support & Trauma Response Unit",
-                    oxygen_cylinders=4,
-                    paramedic_id=paramedic_user.id,
-                )
-            )
+                # 5. Restore Police Officer Profiles
+                for po in backup.get("police", []):
+                    u_id = uuid.UUID(po["user_id"])
+                    prof = db.scalar(select(PoliceOfficerProfile).where(PoliceOfficerProfile.user_id == u_id))
+                    if not prof:
+                        db.add(PoliceOfficerProfile(
+                            id=uuid.UUID(po["id"]),
+                            user_id=u_id,
+                            badge_number=po["badge_number"],
+                            station_name=po["station_name"],
+                            junction_name=po["junction_name"],
+                            junction_latitude=po.get("junction_latitude"),
+                            junction_longitude=po.get("junction_longitude"),
+                            current_latitude=po.get("current_latitude"),
+                            current_longitude=po.get("current_longitude"),
+                            duty_status=po.get("duty_status", "ON_DUTY"),
+                        ))
+                db.commit()
 
-        # 3. Seed Default Police Account (police@rescupath.com / password123)
-        police_user = db.scalar(
-            select(User).where(User.email == "police@rescupath.com")
-        )
-        if not police_user:
-            police_user = User(
-                full_name="Inspector Ramesh Kumar",
-                email="police@rescupath.com",
-                phone="+91 98877 66554",
-                password_hash=default_pwd_hash,
-                role=UserRole.POLICE,
-                is_active=True,
-            )
-            db.add(police_user)
-            db.flush()
-            db.add(
-                PoliceOfficerProfile(
-                    user_id=police_user.id,
-                    badge_number="POL-BLR-007",
-                    station_name="Cubbon Park Traffic Unit",
-                    junction_name="MG Road Junction",
-                    junction_latitude=12.9756,
-                    junction_longitude=77.6066,
-                    current_latitude=12.9756,
-                    current_longitude=77.6066,
-                    duty_status="ON_DUTY",
-                )
-            )
-        else:
-            police_user.password_hash = default_pwd_hash
-            police_user.is_active = True
+                # 6. Restore Hospital Operator Profiles
+                for op_prof in backup.get("operators", []):
+                    u_id = uuid.UUID(op_prof["user_id"])
+                    h_id = uuid.UUID(op_prof["hospital_id"])
+                    prof = db.scalar(select(HospitalOperatorProfile).where(HospitalOperatorProfile.user_id == u_id))
+                    if not prof:
+                        db.add(HospitalOperatorProfile(
+                            id=uuid.UUID(op_prof["id"]),
+                            user_id=u_id,
+                            hospital_id=h_id,
+                            department=op_prof.get("department", "Emergency Department"),
+                        ))
+                db.commit()
 
-        db.commit()
-    print("Demo hospitals, resources, and agency accounts successfully seeded!")
+                # 7. Restore Ambulances
+                for a in backup.get("ambulances", []):
+                    amb = db.scalar(select(Ambulance).where(Ambulance.vehicle_number == a["vehicle_number"]))
+                    param_id = uuid.UUID(a["paramedic_id"]) if a.get("paramedic_id") else None
+                    if not amb:
+                        db.add(Ambulance(
+                            id=uuid.UUID(a["id"]),
+                            vehicle_number=a["vehicle_number"],
+                            status=a.get("status", "AVAILABLE"),
+                            current_latitude=a.get("current_latitude"),
+                            current_longitude=a.get("current_longitude"),
+                            fuel_percentage=a.get("fuel_percentage", 85),
+                            equipment_notes=a.get("equipment_notes", "Trauma kit ready"),
+                            oxygen_cylinders=a.get("oxygen_cylinders", 2),
+                            paramedic_id=param_id,
+                        ))
+                    elif param_id and not amb.paramedic_id:
+                        amb.paramedic_id = param_id
+                db.commit()
+                print("All authentic database users, hospitals, and ambulances restored successfully!")
+                return
+            except Exception as e:
+                print("Notice during local backup restore:", e)
+                db.rollback()
+
+    print("Seed complete.")
 
 
 if __name__ == "__main__":

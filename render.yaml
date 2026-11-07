@@ -19,6 +19,8 @@ services:
         value: "false"
       - key: CORS_ORIGIN_REGEX
         value: "^https?://.*"
+      - key: ALLOW_PUBLIC_OPERATIONS_REGISTRATION
+        value: "true"
 
 databases:
   - name: rescupath-db

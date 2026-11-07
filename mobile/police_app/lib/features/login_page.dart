@@ -13,7 +13,7 @@ class PoliceLoginPage extends StatefulWidget {
 
 class _PoliceLoginPageState extends State<PoliceLoginPage> {
   final api = AppApi();
-  final name = TextEditingController(); final email = TextEditingController(text: 'police@rescupath.com'); final password = TextEditingController(text: 'password123');
+  final name = TextEditingController(); final email = TextEditingController(); final password = TextEditingController();
   final phone = TextEditingController(); final badge = TextEditingController(); final station = TextEditingController(); final junction = TextEditingController();
   bool registering = false; bool busy = false; bool obscure = true; String? error;
 
