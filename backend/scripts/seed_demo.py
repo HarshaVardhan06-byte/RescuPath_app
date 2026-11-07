@@ -1,6 +1,12 @@
 """Seed local demo hospitals/resources.
 Run after migrations: python scripts/seed_demo.py
 """
+import sys
+from pathlib import Path
+
+# Ensure backend root is on sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from sqlalchemy import select
 from app.db.session import SessionLocal
 from app.models.hospital import Hospital
