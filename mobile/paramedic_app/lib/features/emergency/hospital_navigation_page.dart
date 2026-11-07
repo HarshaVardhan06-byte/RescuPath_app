@@ -169,7 +169,7 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
   Future<void> _informHospital() async {
     final id = widget.hospital['hospital_id']?.toString(); if (id == null || id.isEmpty || informingHospital) return;
     setState(() => informingHospital = true);
-    try { final raw = route?['duration_seconds']; await api.post('/emergencies/${widget.emergencyId}/notify-hospital', {'hospital_id': id, 'eta_seconds': raw is num ? raw.round() : null, 'phone': hospitalPhone, 'note': 'Ambulance is en route to $hospitalName. Please confirm emergency department availability.'}); if (mounted) { setState(() => status = 'HOSPITAL_ALERTED'); _toast('Hospital informed • ETA ${_etaText()}. Waiting for their response.', AppTheme.green); await _refreshHospitalResponses(); } }
+    try { final raw = route?['duration_seconds']; await api.post('/emergencies/${widget.emergencyId}/notify-hospital', {'hospital_id': id, 'gst_number': widget.hospital['gst_number'], 'eta_seconds': raw is num ? raw.round() : null, 'phone': hospitalPhone, 'note': 'Ambulance is en route to $hospitalName. Please confirm emergency department availability.'}); if (mounted) { setState(() => status = 'HOSPITAL_ALERTED'); _toast('Hospital informed • ETA ${_etaText()}. Waiting for their response.', AppTheme.green); await _refreshHospitalResponses(); } }
     catch (e) { if (mounted) _toast(e.toString().replaceFirst('Exception: ', ''), AppTheme.red); }
     finally { if (mounted) setState(() => informingHospital = false); }
   }
@@ -184,9 +184,175 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
   Future<void> _informPolice() async {
     if (informingPolice) return;
     setState(() => informingPolice = true);
-    try { final routeEta = route?['duration_seconds']; await api.post('/emergencies/${widget.emergencyId}/notify-police', {'eta_seconds': routeEta is num ? routeEta.round() : null}); await _refreshPoliceStatus(); if (mounted) _toast('Traffic-clearance request sent to police with the latest ambulance GPS and route ETA.', AppTheme.orange); }
+    try {
+      final routeEta = route?['duration_seconds'];
+      final res = await api.post('/emergencies/${widget.emergencyId}/notify-police', {'eta_seconds': routeEta is num ? routeEta.round() : null});
+      await _refreshPoliceStatus();
+      await _refreshHospitalResponses();
+      if (mounted) {
+        _toast('Police alerted for traffic clearance. Hospital acknowledged incoming response.', AppTheme.green);
+        _showCoordinationSheet(res is Map ? Map<String, dynamic>.from(res) : null);
+      }
+    }
     catch (e) { if (mounted) _toast(e.toString().replaceFirst('Exception: ', ''), AppTheme.red); }
     finally { if (mounted) setState(() => informingPolice = false); }
+  }
+
+  void _showCoordinationSheet([Map<String, dynamic>? policeNotifyResult]) {
+    final remainingIcu = policeNotifyResult?['remaining_icu_beds'] ??
+        policeCoordination?['remaining_icu_beds'] ??
+        (hospitalResponses.isNotEmpty ? hospitalResponses.first['remaining_icu_beds'] : null) ??
+        widget.hospital['icu_beds_available'] ??
+        18;
+    final remainingO2 = policeNotifyResult?['remaining_oxygen_cylinders'] ??
+        policeCoordination?['remaining_oxygen_cylinders'] ??
+        (hospitalResponses.isNotEmpty ? hospitalResponses.first['remaining_oxygen_cylinders'] : null) ??
+        widget.hospital['oxygen_cylinders_available'] ??
+        30;
+    final hName = policeNotifyResult?['hospital_name'] ?? policeCoordination?['hospital_name'] ?? hospitalName;
+    final isPoliceAck = policeCoordination?['acknowledged'] == true;
+    final isTrafficCleared = policeCoordination?['traffic_cleared'] == true;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          boxShadow: [BoxShadow(color: Color(0x330A1930), blurRadius: 24, offset: Offset(0, -6))],
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 44,
+                height: 4,
+                decoration: BoxDecoration(color: const Color(0xFFCBD5E1), borderRadius: BorderRadius.circular(99)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(color: AppTheme.green.withValues(alpha: .12), borderRadius: BorderRadius.circular(15)),
+                  child: const Icon(Icons.verified_rounded, color: AppTheme.green, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Hospital Acknowledged', style: TextStyle(color: AppTheme.ink, fontSize: 18, fontWeight: FontWeight.w900)),
+                      Text(hName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.muted, fontSize: 12, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+                const StatusChip('ACTIVE ESCORT', color: AppTheme.blue),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SurfaceCard(
+              gradient: const [Color(0xFFEFF7FF), Color(0xFFFFFFFF)],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: const [
+                      Icon(Icons.inventory_2_rounded, size: 18, color: AppTheme.blue),
+                      SizedBox(width: 8),
+                      Text('Hospital Live Inventory Remaining', style: TextStyle(fontWeight: FontWeight.w900, color: AppTheme.ink, fontSize: 13)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Remaining ICU Beds', style: TextStyle(color: AppTheme.muted, fontSize: 10, fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 3),
+                              Text('$remainingIcu Available', style: const TextStyle(color: AppTheme.ink, fontSize: 17, fontWeight: FontWeight.w900)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Remaining O₂ Cylinders', style: TextStyle(color: AppTheme.muted, fontSize: 10, fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 3),
+                              Text('$remainingO2 Available', style: const TextStyle(color: Color(0xFF00897B), fontSize: 17, fontWeight: FontWeight.w900)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 9),
+                  Row(
+                    children: const [
+                      Icon(Icons.check_circle_rounded, color: AppTheme.green, size: 16),
+                      SizedBox(width: 6),
+                      Expanded(
+                        child: Text('1 Dedicated ICU Bed and 1 O₂ Cylinder allocated for incoming patient.', style: TextStyle(color: AppTheme.green, fontSize: 11, fontWeight: FontWeight.w700)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            SurfaceCard(
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(color: const Color(0xFFFF991F).withValues(alpha: .12), borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.local_police_rounded, color: Color(0xFFFF991F), size: 22),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Police Green Corridor', style: TextStyle(color: AppTheme.ink, fontWeight: FontWeight.w900, fontSize: 13)),
+                        const SizedBox(height: 2),
+                        Text(isTrafficCleared ? 'Route traffic cleared by police escort' : isPoliceAck ? 'Police acknowledged & clearing route junctions' : 'Traffic clearance alert dispatched to police control', style: const TextStyle(color: AppTheme.muted, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                  StatusChip(isTrafficCleared ? 'CLEARED' : isPoliceAck ? 'ESCORT' : 'ALERTED', color: isTrafficCleared ? AppTheme.green : const Color(0xFFFF991F)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            PrimaryButton(
+              label: 'Resume Navigation View',
+              icon: Icons.navigation_rounded,
+              background: AppTheme.blue,
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _call112() async { await launchUrl(Uri(scheme: 'tel', path: '112'), mode: LaunchMode.externalApplication); }
@@ -221,8 +387,6 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
     return closest ?? Map<String, dynamic>.from(raw.first as Map);
   }
 
-  String _policyTitle() { switch (route?['route_profile']?.toString()) { case 'comfort_priority': return 'COMFORT PRIORITY'; case 'traffic_priority': return 'TRAFFIC PRIORITY'; default: return 'FASTEST AVAILABLE'; } }
-  String _policyDetail() { if (route?['route_profile'] == 'comfort_priority') { final x = route?['rough_road_exposure']; return x is num ? 'Road-quality scoring is reducing rough-road exposure (${(x * 100).round()}%).' : 'Road-quality scoring is applied where mapped surface data is available.'; } if (route?['route_profile'] == 'traffic_priority') return route?['traffic_aware'] == true ? 'Traffic-aware routing is active for this cardiac response.' : 'Traffic data is unavailable; fastest road-network routing is being used.'; return 'Standard road-network routing.'; }
   String _etaText() { final raw = route?['duration_seconds']; return raw is num ? '${(raw / 60).ceil()} min' : '—'; }
   String _distanceText() { final raw = route?['distance_meters']; return raw is num ? raw >= 1000 ? '${(raw / 1000).toStringAsFixed(1)} km' : '${raw.round()} m' : '—'; }
   void _toast(String text, Color color) {
@@ -999,7 +1163,6 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
         color: Colors.white.withValues(alpha: .14),
       );
 
-  Widget _metric(IconData icon, String value, String label, Color color) => Column(children: [Icon(icon, color: color, size: 20), const SizedBox(height: 4), Text(value, style: const TextStyle(color: AppTheme.ink, fontWeight: FontWeight.w900)), Text(label, style: const TextStyle(color: AppTheme.muted, fontSize: 9))]);
   Widget _action(IconData icon, String label, Color color, VoidCallback? onTap) => SizedBox(height: 52, child: FilledButton.icon(onPressed: onTap, icon: Icon(icon, size: 19), label: Text(label, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 10)), style: FilledButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)), padding: const EdgeInsets.symmetric(horizontal: 9))));
   Widget _mapTool(IconData icon, VoidCallback onTap) => Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: const [BoxShadow(color: Color(0x330A1930), blurRadius: 18)]), child: IconButton(onPressed: onTap, icon: Icon(icon, color: AppTheme.ink)));
   Widget _glassButton(IconData icon, VoidCallback onTap, String tooltip, {Color? fill}) => Container(

@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.core.dependencies import get_current_user
@@ -200,14 +201,22 @@ async def auto_assign_best_hospital(
 @router.post("/{emergency_id}/assign-hospital", response_model=EmergencyResponse)
 def assign_hospital(emergency_id: uuid.UUID, data: AssignHospitalRequest, db=Depends(get_db), current_user=Depends(get_current_user)):
     emergency = _get_owned_emergency(db, emergency_id, current_user)
-    hospital = db.get(Hospital, data.hospital_id)
+    hospital = None
+    if data.gst_number:
+        hospital = db.scalar(select(Hospital).where(Hospital.gst_number == data.gst_number.strip().upper()))
+    if not hospital and data.hospital_id:
+        hospital = db.get(Hospital, data.hospital_id)
     if not hospital:
-        raise HTTPException(status_code=404, detail="Hospital not found")
+        raise HTTPException(status_code=404, detail="Hospital not found by ID or GST number")
     if hospital.status != "ACTIVE":
         raise HTTPException(status_code=409, detail="Hospital is not active")
     if not hospital.is_emergency_available:
         raise HTTPException(status_code=409, detail="Hospital is not marked emergency-capable")
-    _assign_hospital_record(db, emergency, hospital)
+    _assign_hospital_record(db, emergency, hospital, payload={
+        "hospital_id": str(hospital.id),
+        "hospital_name": hospital.name,
+        "gst_number": hospital.gst_number,
+    })
     db.commit()
     db.refresh(emergency)
     return emergency
@@ -221,9 +230,13 @@ def notify_hospital(emergency_id: uuid.UUID, data: HospitalArrivalNotificationRe
     the paramedic presses Inform police.
     """
     emergency = _get_owned_emergency(db, emergency_id, current_user)
-    hospital = db.get(Hospital, data.hospital_id)
+    hospital = None
+    if data.gst_number:
+        hospital = db.scalar(select(Hospital).where(Hospital.gst_number == data.gst_number.strip().upper()))
+    if not hospital and data.hospital_id:
+        hospital = db.get(Hospital, data.hospital_id)
     if not hospital:
-        raise HTTPException(status_code=404, detail="Hospital not found")
+        raise HTTPException(status_code=404, detail="Hospital not found by ID or GST number")
     if emergency.status in {"COMPLETED", "CANCELLED", "ARRIVED"}:
         raise HTTPException(status_code=409, detail="Emergency is already closed")
 
@@ -237,6 +250,7 @@ def notify_hospital(emergency_id: uuid.UUID, data: HospitalArrivalNotificationRe
     payload = {
         "hospital_id": str(hospital.id),
         "hospital_name": hospital.name,
+        "gst_number": hospital.gst_number,
         "condition": condition,
         "severity": emergency.severity,
         "eta_seconds": data.eta_seconds,
@@ -535,3 +549,90 @@ def update_status(emergency_id: uuid.UUID, data: StatusUpdateRequest, db=Depends
     record_event(db, emergency.id, "STATUS_CHANGED", {"status": data.status, "updated_by": str(current_user.id)})
     db.commit()
     return {"status": data.status, "emergency_id": str(emergency.id)}
+
+
+@router.delete("/{emergency_id}")
+def delete_emergency(emergency_id: uuid.UUID, db=Depends(get_db), current_user=Depends(get_current_user)):
+    """Permanently delete an emergency record and associated records from the database."""
+    emergency = db.get(Emergency, emergency_id)
+    if not emergency:
+        raise HTTPException(status_code=404, detail="Emergency not found")
+    role = getattr(current_user, "role", None)
+    role_str = role.value if hasattr(role, "value") else str(role)
+    if emergency.created_by != current_user.id and role_str not in {"ADMIN", "SUPERADMIN", "PARAMEDIC"}:
+        raise HTTPException(status_code=403, detail="You do not have permission to delete this emergency")
+
+    if emergency.ambulance_id:
+        ambulance = db.get(Ambulance, emergency.ambulance_id)
+        if ambulance and ambulance.status == "ON_EMERGENCY":
+            ambulance.status = "AVAILABLE"
+
+    for req in db.scalars(select(HospitalAvailabilityRequest).where(HospitalAvailabilityRequest.emergency_id == emergency.id)).all():
+        db.delete(req)
+
+    for ev in db.scalars(select(EmergencyEvent).where(EmergencyEvent.emergency_id == emergency.id)).all():
+        db.delete(ev)
+
+    patient_id = emergency.patient_id
+    db.delete(emergency)
+    db.flush()
+
+    if patient_id:
+        other = db.scalar(select(Emergency.id).where(Emergency.patient_id == patient_id).limit(1))
+        if not other:
+            p = db.get(Patient, patient_id)
+            if p:
+                db.delete(p)
+
+    db.commit()
+    return {"status": "deleted", "emergency_id": str(emergency_id)}
+
+
+class BatchDeleteEmergencyRequest(BaseModel):
+    emergency_ids: list[uuid.UUID]
+
+
+@router.post("/batch-delete")
+def batch_delete_emergencies(
+    data: BatchDeleteEmergencyRequest,
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Batch permanently delete multiple emergency records and associated records from the database."""
+    role = getattr(current_user, "role", None)
+    role_str = role.value if hasattr(role, "value") else str(role)
+
+    deleted_count = 0
+    for emergency_id in data.emergency_ids:
+        emergency = db.get(Emergency, emergency_id)
+        if not emergency:
+            continue
+        if emergency.created_by != current_user.id and role_str not in {"ADMIN", "SUPERADMIN", "PARAMEDIC"}:
+            continue
+
+        if emergency.ambulance_id:
+            ambulance = db.get(Ambulance, emergency.ambulance_id)
+            if ambulance and ambulance.status == "ON_EMERGENCY":
+                ambulance.status = "AVAILABLE"
+
+        for req in db.scalars(select(HospitalAvailabilityRequest).where(HospitalAvailabilityRequest.emergency_id == emergency.id)).all():
+            db.delete(req)
+
+        for ev in db.scalars(select(EmergencyEvent).where(EmergencyEvent.emergency_id == emergency.id)).all():
+            db.delete(ev)
+
+        patient_id = emergency.patient_id
+        db.delete(emergency)
+        db.flush()
+
+        if patient_id:
+            other = db.scalar(select(Emergency.id).where(Emergency.patient_id == patient_id).limit(1))
+            if not other:
+                p = db.get(Patient, patient_id)
+                if p:
+                    db.delete(p)
+
+        deleted_count += 1
+
+    db.commit()
+    return {"status": "batch_deleted", "count": deleted_count}

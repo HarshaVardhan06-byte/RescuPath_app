@@ -16,9 +16,13 @@ from app.models.paramedic import ParamedicProfile
 from app.models.password_reset import PasswordResetToken
 from app.models.user import User, UserRole
 from app.models.ambulance import Ambulance
+from app.models.police_officer import PoliceOfficerProfile
+from app.models.hospital_operator import HospitalOperatorProfile
+from app.models.hospital import Hospital
 
 from app.schemas.auth import (
     LoginRequest,
+    HospitalLoginRequest,
     RegisterRequest,
     TokenResponse,
     UserResponse,
@@ -61,30 +65,70 @@ def _create_default_ambulance(db, user: User) -> Ambulance:
     return ambulance
 
 
-def _social_user(db, email: str, full_name: str | None):
+def _social_user(db, email: str, full_name: str | None, role: str | None = None):
     user = db.scalar(
         select(User).where(User.email == email)
     )
 
     if not user:
+        assigned_role = UserRole.PARAMEDIC
+        if role:
+            r = role.strip().upper()
+            if r == "POLICE":
+                assigned_role = UserRole.POLICE
+            elif r == "HOSPITAL":
+                assigned_role = UserRole.HOSPITAL
+
         user = User(
             full_name=full_name or email.split("@")[0],
             email=email,
             password_hash=hash_password(secrets.token_urlsafe(32)),
-            role=UserRole.PARAMEDIC,
+            role=assigned_role,
         )
 
         db.add(user)
         db.flush()
 
-        db.add(
-            ParamedicProfile(
-                user_id=user.id,
-                availability_status="AVAILABLE",
+        if assigned_role == UserRole.PARAMEDIC:
+            db.add(
+                ParamedicProfile(
+                    user_id=user.id,
+                    availability_status="AVAILABLE",
+                )
             )
-        )
-
-        _create_default_ambulance(db, user)
+            _create_default_ambulance(db, user)
+        elif assigned_role == UserRole.POLICE:
+            badge_suffix = f"{secrets.randbelow(900000) + 100000}"
+            db.add(
+                PoliceOfficerProfile(
+                    user_id=user.id,
+                    badge_number=f"POL-{badge_suffix}",
+                    station_name="Central Police Command",
+                    junction_name="Central Traffic Junction",
+                    junction_latitude=12.9716,
+                    junction_longitude=77.5946,
+                    duty_status="ON_DUTY",
+                )
+            )
+        elif assigned_role == UserRole.HOSPITAL:
+            hospital = db.scalar(select(Hospital).limit(1))
+            if hospital is None:
+                hospital = Hospital(
+                    name="City General Hospital",
+                    latitude=12.9716,
+                    longitude=77.5946,
+                    status="ACTIVE",
+                    is_emergency_available=True,
+                )
+                db.add(hospital)
+                db.flush()
+            db.add(
+                HospitalOperatorProfile(
+                    user_id=user.id,
+                    hospital_id=hospital.id,
+                    department="Emergency Department",
+                )
+            )
 
         db.commit()
         db.refresh(user)
@@ -98,6 +142,54 @@ def _social_user(db, email: str, full_name: str | None):
 
         if ambulance is None:
             _create_default_ambulance(db, user)
+            db.commit()
+
+    elif user.role == UserRole.POLICE:
+        police_prof = db.scalar(
+            select(PoliceOfficerProfile)
+            .where(PoliceOfficerProfile.user_id == user.id)
+            .limit(1)
+        )
+        if police_prof is None:
+            badge_suffix = f"{secrets.randbelow(900000) + 100000}"
+            db.add(
+                PoliceOfficerProfile(
+                    user_id=user.id,
+                    badge_number=f"POL-{badge_suffix}",
+                    station_name="Central Police Command",
+                    junction_name="Central Traffic Junction",
+                    junction_latitude=12.9716,
+                    junction_longitude=77.5946,
+                    duty_status="ON_DUTY",
+                )
+            )
+            db.commit()
+
+    elif user.role == UserRole.HOSPITAL:
+        hosp_prof = db.scalar(
+            select(HospitalOperatorProfile)
+            .where(HospitalOperatorProfile.user_id == user.id)
+            .limit(1)
+        )
+        if hosp_prof is None:
+            hospital = db.scalar(select(Hospital).limit(1))
+            if hospital is None:
+                hospital = Hospital(
+                    name="City General Hospital",
+                    latitude=12.9716,
+                    longitude=77.5946,
+                    status="ACTIVE",
+                    is_emergency_available=True,
+                )
+                db.add(hospital)
+                db.flush()
+            db.add(
+                HospitalOperatorProfile(
+                    user_id=user.id,
+                    hospital_id=hospital.id,
+                    department="Emergency Department",
+                )
+            )
             db.commit()
 
     return user
@@ -161,9 +253,38 @@ def login(
     data: LoginRequest,
     db=Depends(get_db),
 ):
+    identifier = data.email.strip()
     user = db.scalar(
-        select(User).where(User.email == data.email)
+        select(User).where(User.email.ilike(identifier))
     )
+
+    if not user:
+        # Check if the identifier is a Hospital GST Number
+        hospital = db.scalar(
+            select(Hospital).where(Hospital.gst_number == identifier.upper())
+        )
+        if hospital:
+            # Check for existing operator profile for this hospital
+            hosp_profile = db.scalar(
+                select(HospitalOperatorProfile)
+                .where(HospitalOperatorProfile.hospital_id == hospital.id)
+                .limit(1)
+            )
+            if hosp_profile:
+                user = db.get(User, hosp_profile.user_id)
+            else:
+                # First-time login for this hospital GST: create the operator user
+                user = User(
+                    full_name=f"{hospital.name} Desk",
+                    email=f"{hospital.gst_number.lower()}@hospital.rescupath.com",
+                    password_hash=hash_password(data.password),
+                    role=UserRole.HOSPITAL,
+                )
+                db.add(user)
+                db.flush()
+                db.add(HospitalOperatorProfile(user_id=user.id, hospital_id=hospital.id))
+                db.commit()
+                db.refresh(user)
 
     if not user or not verify_password(
         data.password,
@@ -171,7 +292,7 @@ def login(
     ):
         raise HTTPException(
             401,
-            "Invalid email or password",
+            "Invalid email/GST number or password",
         )
 
     if not user.is_active:
@@ -192,6 +313,74 @@ def login(
         if ambulance is None:
             _create_default_ambulance(db, user)
             db.commit()
+
+    return TokenResponse(
+        access_token=create_access_token(
+            str(user.id),
+            user.role.value,
+        )
+    )
+
+
+@router.post(
+    "/hospital/login",
+    response_model=TokenResponse,
+)
+def hospital_gst_login(
+    data: HospitalLoginRequest,
+    db=Depends(get_db),
+):
+    gst = data.gst_number.strip().upper()
+    hospital = db.scalar(
+        select(Hospital).where(Hospital.gst_number == gst)
+    )
+    if not hospital:
+        raise HTTPException(
+            404,
+            f"No hospital found with GST number '{gst}'. Please verify the GSTIN."
+        )
+
+    hosp_profile = db.scalar(
+        select(HospitalOperatorProfile)
+        .where(HospitalOperatorProfile.hospital_id == hospital.id)
+        .limit(1)
+    )
+    if hosp_profile:
+        user = db.get(User, hosp_profile.user_id)
+        if not user:
+            user = User(
+                full_name=f"{hospital.name} Desk",
+                email=f"{gst.lower()}@hospital.rescupath.com",
+                password_hash=hash_password(data.password),
+                role=UserRole.HOSPITAL,
+            )
+            db.add(user)
+            db.flush()
+            hosp_profile.user_id = user.id
+            db.commit()
+            db.refresh(user)
+        elif data.set_password:
+            user.password_hash = hash_password(data.password)
+            db.commit()
+            db.refresh(user)
+        elif not verify_password(data.password, user.password_hash):
+            raise HTTPException(
+                401,
+                "Invalid password for this GST number. Turn on 'Create / Set Password with GST' if you wish to set a new password."
+            )
+    else:
+        # First-time login: create operator profile linked directly to this hospital
+        user = User(
+            full_name=f"{hospital.name} Desk",
+            email=f"{gst.lower()}@hospital.rescupath.com",
+            password_hash=hash_password(data.password),
+            role=UserRole.HOSPITAL,
+        )
+        db.add(user)
+        db.flush()
+        db.add(HospitalOperatorProfile(user_id=user.id, hospital_id=hospital.id))
+        db.commit()
+        db.refresh(user)
 
     return TokenResponse(
         access_token=create_access_token(
@@ -223,6 +412,7 @@ def google_login(
         db,
         email,
         data.full_name or claims.get("name"),
+        role=data.role,
     )
 
     return TokenResponse(
@@ -254,7 +444,8 @@ async def apple_login(
     user = _social_user(
         db,
         email,
-        data.full_name or "RescuPath Paramedic",
+        data.full_name or "RescuPath Officer",
+        role=data.role,
     )
 
     return TokenResponse(

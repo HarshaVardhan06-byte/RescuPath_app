@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../core/app_api.dart';
 import '../core/luxury_theme.dart';
 
@@ -32,6 +35,68 @@ class _PoliceLoginPageState extends State<PoliceLoginPage> {
     } finally { if (mounted) setState(() => busy = false); }
   }
 
+  Future<void> _google() async {
+    setState(() { busy = true; error = null; });
+    try {
+      final google = GoogleSignIn(
+        clientId: AppApi.googleWebClientId,
+        serverClientId: kIsWeb ? null : AppApi.googleWebClientId,
+        scopes: const ['email', 'profile'],
+      );
+      final account = await google.signIn();
+      if (account == null) {
+        setState(() => busy = false);
+        return;
+      }
+      final auth = await account.authentication;
+      final token = (auth.idToken != null && auth.idToken!.isNotEmpty)
+          ? auth.idToken!
+          : (auth.accessToken ?? '');
+      if (token.isEmpty) {
+        throw Exception('Google did not return an identity or access token.');
+      }
+      final response = await api.post('/auth/oauth/google', {
+        'id_token': token,
+        'full_name': account.displayName,
+        'role': 'POLICE',
+      });
+      await api.saveToken(response['access_token'].toString());
+      await api.get('/coordination/police/board');
+      widget.onSignedIn();
+    } catch (e) {
+      await api.logout();
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _apple() async {
+    setState(() { busy = true; error = null; });
+    try {
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+      );
+      if (credential.identityToken == null || credential.identityToken!.isEmpty) {
+        throw Exception('Apple did not return an identity token.');
+      }
+      final fullName = [credential.givenName, credential.familyName].whereType<String>().join(' ');
+      final response = await api.post('/auth/oauth/apple', {
+        'id_token': credential.identityToken,
+        'full_name': fullName.isEmpty ? 'Traffic Police Officer' : fullName,
+        'role': 'POLICE',
+      });
+      await api.saveToken(response['access_token'].toString());
+      await api.get('/coordination/police/board');
+      widget.onSignedIn();
+    } catch (e) {
+      await api.logout();
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     body: SafeArea(child: Center(child: SingleChildScrollView(padding: const EdgeInsets.all(20), child: ConstrainedBox(
@@ -53,8 +118,47 @@ class _PoliceLoginPageState extends State<PoliceLoginPage> {
           TextField(controller: password, obscureText: obscure, decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined)))),
           if (error != null) ...[const SizedBox(height: 12), Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: LuxuryTheme.red.withValues(alpha: .08), borderRadius: BorderRadius.circular(12)), child: Text(error!, style: const TextStyle(color: LuxuryTheme.red, fontWeight: FontWeight.w700)))],
           const SizedBox(height: 16),
-          FilledButton.icon(onPressed: busy ? null : submit, icon: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.arrow_forward_rounded), label: Text(busy ? 'Please wait…' : registering ? 'Create police account' : 'Sign in'), style: FilledButton.styleFrom(backgroundColor: LuxuryTheme.blue, minimumSize: const Size.fromHeight(52), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)))),
-          const SizedBox(height: 8), TextButton(onPressed: busy ? null : () => setState(() { registering = !registering; error = null; }), child: Text(registering ? 'Already enrolled? Sign in' : 'First time? Create officer profile')),
+          FilledButton.icon(
+            onPressed: busy ? null : submit,
+            icon: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.arrow_forward_rounded),
+            label: Text(busy ? 'Please wait…' : registering ? 'Create police account' : 'Sign in'),
+            style: FilledButton.styleFrom(backgroundColor: LuxuryTheme.blue, minimumSize: const Size.fromHeight(52), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: const [
+              Expanded(child: Divider()),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 10),
+                child: Text('OR CONTINUE WITH', style: TextStyle(color: LuxuryTheme.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+              ),
+              Expanded(child: Divider()),
+            ],
+          ),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: busy ? null : _google,
+            icon: const Icon(Icons.g_mobiledata, size: 24, color: LuxuryTheme.ink),
+            label: const Text('Continue with Google', style: TextStyle(fontWeight: FontWeight.w800, color: LuxuryTheme.ink)),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(50),
+              side: const BorderSide(color: LuxuryTheme.line),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: busy ? null : _apple,
+            icon: const Icon(Icons.apple, size: 22, color: LuxuryTheme.ink),
+            label: const Text('Continue with Apple', style: TextStyle(fontWeight: FontWeight.w800, color: LuxuryTheme.ink)),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(50),
+              side: const BorderSide(color: LuxuryTheme.line),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(onPressed: busy ? null : () => setState(() { registering = !registering; error = null; }), child: Text(registering ? 'Already enrolled? Sign in' : 'First time? Create officer profile')),
         ])),
         const SizedBox(height: 12), const Text('Live alerts refresh automatically. Allow location access while on duty.', textAlign: TextAlign.center, style: TextStyle(color: LuxuryTheme.muted, fontSize: 12)),
       ]),

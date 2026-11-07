@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 class HospitalCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
+    gst_number: str | None = None
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
     status: str = "ACTIVE"
@@ -20,6 +21,7 @@ class HospitalResourceCreate(BaseModel):
     icu_beds_available: int = Field(default=0, ge=0)
     emergency_beds_available: int = Field(default=0, ge=0)
     ventilators_available: int = Field(default=0, ge=0)
+    oxygen_cylinders_available: int = Field(default=20, ge=0)
     oxygen_available: bool = True
     trauma_capable: bool = False
     cardiac_capable: bool = False
@@ -35,7 +37,11 @@ class HospitalResourceResponse(HospitalResourceCreate):
 class HospitalCandidate(BaseModel):
     hospital_id: uuid.UUID
     hospital_name: str
+    gst_number: str | None = None
     rank_score: float | None = None
+    match_percentage: int | None = None
+    is_top_match: bool = False
+    specialty_badge: str | None = None
     model_score: float | None = None
     model_version: str | None = None
     rank: int | None = None
@@ -54,6 +60,9 @@ class HospitalCandidate(BaseModel):
     emergency_service_status: str | None = None
     availability_confidence: str | None = None
     beds_total_listed: int | None = None
+    icu_beds_available: int | None = None
+    oxygen_cylinders_available: int | None = None
+    emergency_beds_available: int | None = None
     phone: str | None = None
     website: str | None = None
     opening_hours: str | None = None

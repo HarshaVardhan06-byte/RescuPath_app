@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 import uuid
 
 import httpx
@@ -21,6 +22,7 @@ from app.models.hospital import Hospital
 from app.models.hospital_availability_request import HospitalAvailabilityRequest
 from app.models.hospital_operator import HospitalOperatorProfile
 from app.models.hospital_resource import HospitalResource
+from app.models.patient import Patient
 from app.models.police_officer import PoliceOfficerProfile
 from app.models.user import User, UserRole
 from app.services.events import record_event
@@ -54,6 +56,50 @@ class HospitalRegister(BaseModel):
     department: str = Field(default="Emergency Department", max_length=100)
 
 
+class HospitalRegisterFull(BaseModel):
+    hospital_name: str = Field(min_length=2, max_length=200)
+    gst_number: str = Field(min_length=5, max_length=30)
+    gst_photo_url: str | None = None
+    admin_name: str = Field(min_length=2, max_length=120)
+    admin_email: EmailStr
+    password: str = Field(min_length=6, max_length=128)
+    admin_phone: str | None = Field(default=None, max_length=30)
+    latitude: float = Field(default=12.9716, ge=-90, le=90)
+    longitude: float = Field(default=77.5946, ge=-180, le=180)
+    department: str = Field(default="Emergency Department", max_length=100)
+    specialties: str | None = Field(default="Multi-Specialty Emergency Care", max_length=255)
+    icu_beds_available: int = Field(default=12, ge=0)
+    emergency_beds_available: int = Field(default=20, ge=0)
+    ventilators_available: int = Field(default=6, ge=0)
+    oxygen_cylinders_available: int = Field(default=25, ge=0)
+    staff_count: int = Field(default=25, ge=0)
+    parking_available: bool = True
+
+
+class HospitalProfileUpdate(BaseModel):
+    hospital_name: str | None = None
+    specialties: str | None = None
+    admin_name: str | None = None
+    admin_phone: str | None = None
+    staff_count: int | None = None
+    parking_available: bool | None = None
+    gst_photo_url: str | None = None
+    department: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+class HospitalForgotRequest(BaseModel):
+    identifier: str  # email, GST number, or phone number
+    request_type: str = Field(default="FORGOT_PASSWORD", pattern="^(FORGOT_GST|FORGOT_PASSWORD)$")
+
+
+class HospitalResetPassword(BaseModel):
+    gst_number: str
+    admin_email: EmailStr
+    new_password: str = Field(min_length=6, max_length=128)
+
+
 class PoliceLocationUpdate(BaseModel):
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
@@ -71,6 +117,7 @@ class HospitalAvailabilityUpdate(BaseModel):
     icu_beds_available: int | None = Field(default=None, ge=0, le=10000)
     emergency_beds_available: int | None = Field(default=None, ge=0, le=10000)
     ventilators_available: int | None = Field(default=None, ge=0, le=10000)
+    oxygen_cylinders_available: int | None = Field(default=None, ge=0, le=10000)
     oxygen_available: bool | None = None
     trauma_capable: bool | None = None
     cardiac_capable: bool | None = None
@@ -186,12 +233,21 @@ def _emergency_card(db, emergency: Emergency, *, eta_override: int | None = None
     else:
         eta = None
         eta_basis = "route ETA not yet available"
+    patient = db.get(Patient, emergency.patient_id) if emergency.patient_id else None
     return {
         "emergency_id": str(emergency.id),
         "ambulance_id": str(emergency.ambulance_id) if emergency.ambulance_id else None,
         "ambulance_number": ambulance.vehicle_number if ambulance else "Ambulance",
         "ambulance_status": ambulance.status if ambulance else "UNKNOWN",
         "patient_id": str(emergency.patient_id),
+        "patient": {
+            "id": str(patient.id),
+            "full_name": patient.full_name or "Emergency Patient",
+            "age": patient.age,
+            "sex": patient.sex,
+            "blood_group": patient.blood_group,
+            "medical_notes": patient.medical_notes,
+        } if patient else None,
         "condition": _condition(db, emergency.id),
         "severity": emergency.severity,
         "status": emergency.status,
@@ -283,6 +339,190 @@ def register_police(data: PoliceRegister, db=Depends(get_db)):
     except Exception:
         db.rollback()
         raise
+
+
+def _clean_gst(gst: str) -> str:
+    return re.sub(r'[^A-Za-z0-9]', '', gst).upper()
+
+
+@router.post("/hospital/register-full", status_code=status.HTTP_201_CREATED)
+def register_hospital_full(data: HospitalRegisterFull, db=Depends(get_db)):
+    _assert_registration_enabled()
+    gst = _clean_gst(data.gst_number)
+    if len(gst) < 8:
+        raise HTTPException(status_code=400, detail="Invalid GST identification number format.")
+
+    # Check for existing GSTIN
+    existing_hosp = db.scalar(select(Hospital).where(Hospital.gst_number == gst))
+    if existing_hosp:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Hospital with GSTIN '{gst}' is already registered as '{existing_hosp.name}'. Please sign in with this GST ID or use Forgot Password."
+        )
+
+    # Check for existing admin email
+    admin_email = str(data.admin_email).lower().strip()
+    existing_user = db.scalar(select(User).where(User.email == admin_email))
+    if existing_user:
+        raise HTTPException(
+            status_code=409,
+            detail=f"An account with email '{admin_email}' already exists. Please sign in or use a different administrator email."
+        )
+
+    try:
+        user = User(
+            full_name=data.admin_name.strip(),
+            email=admin_email,
+            phone=data.admin_phone.strip() if data.admin_phone else None,
+            password_hash=hash_password(data.password),
+            role=UserRole.HOSPITAL,
+        )
+        db.add(user)
+        db.flush()
+
+        specialties_str = data.specialties.strip() if data.specialties else "Multi-Specialty Emergency Care"
+        hospital = Hospital(
+            name=data.hospital_name.strip(),
+            gst_number=gst,
+            gst_photo_url=data.gst_photo_url,
+            gst_verified=True,
+            specialties=specialties_str,
+            admin_name=data.admin_name.strip(),
+            admin_email=admin_email,
+            admin_phone=data.admin_phone.strip() if data.admin_phone else None,
+            staff_count=data.staff_count,
+            parking_available=data.parking_available,
+            latitude=data.latitude,
+            longitude=data.longitude,
+            status="ACTIVE",
+            is_emergency_available=True,
+        )
+        db.add(hospital)
+        db.flush()
+
+        trauma = "trauma" in specialties_str.lower() or "emergency" in specialties_str.lower()
+        cardiac = "cardiac" in specialties_str.lower() or "cardio" in specialties_str.lower() or "heart" in specialties_str.lower()
+        resource = HospitalResource(
+            hospital_id=hospital.id,
+            icu_beds_available=data.icu_beds_available,
+            emergency_beds_available=data.emergency_beds_available,
+            ventilators_available=data.ventilators_available,
+            oxygen_cylinders_available=data.oxygen_cylinders_available,
+            oxygen_available=True,
+            trauma_capable=trauma,
+            cardiac_capable=cardiac,
+        )
+        db.add(resource)
+
+        profile = HospitalOperatorProfile(
+            user_id=user.id,
+            hospital_id=hospital.id,
+            department=data.department.strip() or "Emergency Department",
+        )
+        db.add(profile)
+        db.commit()
+        db.refresh(user)
+        db.refresh(hospital)
+
+        return _new_token(user) | {"hospital": hospital_me(db, user)}
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Hospital GST or administrator email already registered")
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post("/hospital/forgot-credentials")
+def hospital_forgot_credentials(data: HospitalForgotRequest, db=Depends(get_db)):
+    ident = data.identifier.strip()
+    if not ident:
+        raise HTTPException(status_code=400, detail="Identifier is required.")
+
+    if data.request_type == "FORGOT_GST":
+        # Search by admin email, user email, or admin phone
+        hosp = db.scalar(
+            select(Hospital).where(
+                (Hospital.admin_email.ilike(ident)) |
+                (Hospital.admin_phone == ident)
+            ).limit(1)
+        )
+        if not hosp:
+            user = db.scalar(select(User).where(User.email.ilike(ident)).limit(1))
+            if user:
+                prof = db.scalar(select(HospitalOperatorProfile).where(HospitalOperatorProfile.user_id == user.id).limit(1))
+                if prof:
+                    hosp = db.get(Hospital, prof.hospital_id)
+        if not hosp or not hosp.gst_number:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No registered hospital found for '{ident}'. Please verify the administrator email or contact central administration."
+            )
+        return {
+            "status": "success",
+            "message": f"Administrator verified. Your registered Hospital GSTIN is {hosp.gst_number} for {hosp.name}.",
+            "gst_number": hosp.gst_number,
+            "hospital_name": hosp.name,
+            "admin_email": hosp.admin_email or ident,
+        }
+    else:  # FORGOT_PASSWORD
+        clean_gst = _clean_gst(ident)
+        hosp = db.scalar(
+            select(Hospital).where(
+                (Hospital.gst_number == clean_gst) |
+                (Hospital.admin_email.ilike(ident))
+            ).limit(1)
+        )
+        if not hosp:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No hospital found matching '{ident}'. Please verify your GST number or registered Admin Email."
+            )
+
+        email_str = hosp.admin_email or "admin@hospital.org"
+        parts = email_str.split("@")
+        masked = parts[0][:2] + "****@" + (parts[1] if len(parts) > 1 else "")
+        return {
+            "status": "verified",
+            "message": f"Hospital '{hosp.name}' verified. Enter the registered administrator email ({masked}) to set a new password.",
+            "gst_number": hosp.gst_number,
+            "hospital_name": hosp.name,
+            "admin_email_hint": masked,
+        }
+
+
+@router.post("/hospital/reset-password")
+def hospital_reset_password(data: HospitalResetPassword, db=Depends(get_db)):
+    clean_gst = _clean_gst(data.gst_number)
+    email = str(data.admin_email).strip().lower()
+
+    hosp = db.scalar(select(Hospital).where(Hospital.gst_number == clean_gst))
+    if not hosp:
+        raise HTTPException(status_code=404, detail=f"No hospital found with GSTIN '{clean_gst}'.")
+
+    matched_user = None
+    if hosp.admin_email and hosp.admin_email.lower().strip() == email:
+        matched_user = db.scalar(select(User).where(User.email.ilike(email)).limit(1))
+
+    if not matched_user:
+        prof = db.scalar(select(HospitalOperatorProfile).where(HospitalOperatorProfile.hospital_id == hosp.id).limit(1))
+        if prof:
+            op_user = db.get(User, prof.user_id)
+            if op_user and (op_user.email.lower().strip() == email or hosp.admin_email is None):
+                matched_user = op_user
+
+    if not matched_user:
+        raise HTTPException(
+            status_code=403,
+            detail="The administrator email entered does not match the registered administrator on file for this GST number."
+        )
+
+    matched_user.password_hash = hash_password(data.new_password)
+    db.commit()
+    return {
+        "status": "success",
+        "message": f"Password for {hosp.name} successfully updated. You may now sign in using your GST ID or email.",
+    }
 
 
 @router.post("/hospital/register", status_code=status.HTTP_201_CREATED)
@@ -462,7 +702,72 @@ def hospital_me(db=Depends(get_db), user: User = Depends(get_current_user)):
     profile = _hospital_profile(db, user)
     hospital = db.get(Hospital, profile.hospital_id)
     resource = db.scalar(select(HospitalResource).where(HospitalResource.hospital_id == profile.hospital_id))
-    return {"id": str(user.id), "full_name": user.full_name, "email": user.email, "phone": user.phone, "hospital_id": str(hospital.id), "hospital_name": hospital.name, "latitude": hospital.latitude, "longitude": hospital.longitude, "status": hospital.status, "emergency_available": hospital.is_emergency_available, "department": profile.department, "resources": {"icu_beds_available": resource.icu_beds_available, "emergency_beds_available": resource.emergency_beds_available, "ventilators_available": resource.ventilators_available, "oxygen_available": resource.oxygen_available, "trauma_capable": resource.trauma_capable, "cardiac_capable": resource.cardiac_capable} if resource else None}
+    return {
+        "id": str(user.id),
+        "full_name": user.full_name,
+        "email": user.email,
+        "phone": user.phone,
+        "hospital_id": str(hospital.id),
+        "hospital_name": hospital.name,
+        "gst_number": getattr(hospital, "gst_number", None),
+        "gst_photo_url": getattr(hospital, "gst_photo_url", None),
+        "gst_verified": getattr(hospital, "gst_verified", True),
+        "specialties": getattr(hospital, "specialties", "Multi-Specialty Emergency Care"),
+        "admin_name": getattr(hospital, "admin_name", user.full_name),
+        "admin_email": getattr(hospital, "admin_email", user.email),
+        "admin_phone": getattr(hospital, "admin_phone", user.phone),
+        "staff_count": getattr(hospital, "staff_count", 25),
+        "parking_available": getattr(hospital, "parking_available", True),
+        "latitude": hospital.latitude,
+        "longitude": hospital.longitude,
+        "status": hospital.status,
+        "emergency_available": hospital.is_emergency_available,
+        "department": profile.department,
+        "resources": {
+            "icu_beds_available": resource.icu_beds_available if resource else 18,
+            "emergency_beds_available": resource.emergency_beds_available if resource else 20,
+            "ventilators_available": resource.ventilators_available if resource else 8,
+            "oxygen_cylinders_available": getattr(resource, "oxygen_cylinders_available", 30) if resource else 30,
+            "oxygen_available": resource.oxygen_available if resource else True,
+            "trauma_capable": resource.trauma_capable if resource else True,
+            "cardiac_capable": resource.cardiac_capable if resource else True,
+        } if resource else None,
+    }
+
+
+@router.put("/hospital/profile")
+def update_hospital_profile(data: HospitalProfileUpdate, db=Depends(get_db), user: User = Depends(get_current_user)):
+    profile = _hospital_profile(db, user)
+    hospital = db.get(Hospital, profile.hospital_id)
+    if not hospital:
+        raise HTTPException(status_code=404, detail="Hospital record not found")
+
+    if data.hospital_name and data.hospital_name.strip():
+        hospital.name = data.hospital_name.strip()
+    if data.specialties is not None:
+        hospital.specialties = data.specialties.strip()
+    if data.admin_name and data.admin_name.strip():
+        hospital.admin_name = data.admin_name.strip()
+        user.full_name = data.admin_name.strip()
+    if data.admin_phone is not None:
+        hospital.admin_phone = data.admin_phone.strip()
+        user.phone = data.admin_phone.strip()
+    if data.staff_count is not None:
+        hospital.staff_count = data.staff_count
+    if data.parking_available is not None:
+        hospital.parking_available = data.parking_available
+    if data.gst_photo_url is not None:
+        hospital.gst_photo_url = data.gst_photo_url
+    if data.department and data.department.strip():
+        profile.department = data.department.strip()
+    if data.latitude is not None and data.longitude is not None:
+        hospital.latitude = data.latitude
+        hospital.longitude = data.longitude
+
+    db.commit()
+    db.refresh(hospital)
+    db.refresh(user)
+    return {"status": "ok", "hospital": hospital_me(db, user)}
 
 
 @router.put("/hospital/availability")
@@ -471,7 +776,15 @@ def update_hospital_availability(data: HospitalAvailabilityUpdate, db=Depends(ge
     hospital = db.get(Hospital, profile.hospital_id)
     hospital.is_emergency_available = data.emergency_available
     resource = db.scalar(select(HospitalResource).where(HospitalResource.hospital_id == hospital.id))
-    resource_fields = {"icu_beds_available": data.icu_beds_available, "emergency_beds_available": data.emergency_beds_available, "ventilators_available": data.ventilators_available, "oxygen_available": data.oxygen_available, "trauma_capable": data.trauma_capable, "cardiac_capable": data.cardiac_capable}
+    resource_fields = {
+        "icu_beds_available": data.icu_beds_available,
+        "emergency_beds_available": data.emergency_beds_available,
+        "ventilators_available": data.ventilators_available,
+        "oxygen_cylinders_available": data.oxygen_cylinders_available,
+        "oxygen_available": data.oxygen_available,
+        "trauma_capable": data.trauma_capable,
+        "cardiac_capable": data.cardiac_capable,
+    }
     if resource is None:
         resource = HospitalResource(hospital_id=hospital.id)
         db.add(resource)
@@ -479,24 +792,123 @@ def update_hospital_availability(data: HospitalAvailabilityUpdate, db=Depends(ge
         if value is not None:
             setattr(resource, key, value)
     db.commit()
-    return {"status": "updated", "emergency_available": hospital.is_emergency_available}
+    db.refresh(resource)
+    return {
+        "status": "updated",
+        "emergency_available": hospital.is_emergency_available,
+        "icu_beds_available": resource.icu_beds_available,
+        "oxygen_cylinders_available": getattr(resource, "oxygen_cylinders_available", 20),
+    }
+
+
+class PatientExitRequest(BaseModel):
+    notes: str | None = None
 
 
 @router.get("/hospital/board")
 def hospital_board(db=Depends(get_db), user: User = Depends(get_current_user)):
     profile = _hospital_profile(db, user)
     hospital = db.get(Hospital, profile.hospital_id)
-    rows = db.scalars(select(HospitalAvailabilityRequest).where(HospitalAvailabilityRequest.hospital_id == hospital.id).order_by(HospitalAvailabilityRequest.updated_at.desc()).limit(100)).all()
+    rows = db.scalars(
+        select(HospitalAvailabilityRequest)
+        .where(HospitalAvailabilityRequest.hospital_id == hospital.id)
+        .order_by(HospitalAvailabilityRequest.created_at.desc())
+        .limit(250)
+    ).all()
     requests = []
     for req in rows:
         emergency = db.get(Emergency, req.emergency_id)
-        if not emergency or emergency.status in CLOSED:
+        if not emergency:
             continue
         card = _emergency_card(db, emergency, eta_override=req.requested_eta_seconds)
-        card.update({"request_id": str(req.id), "request_status": req.status, "request_message": req.message, "response_note": req.response_note, "request_created_at": req.created_at.isoformat(), "request_updated_at": req.updated_at.isoformat()})
+        card.update({
+            "request_id": str(req.id),
+            "request_status": req.status,
+            "request_message": req.message,
+            "response_note": req.response_note,
+            "is_dismissed": bool(getattr(req, "is_dismissed", False)),
+            "dismissed_at": req.dismissed_at.isoformat() if getattr(req, "dismissed_at", None) else None,
+            "patient_intake_at": req.patient_intake_at.isoformat() if getattr(req, "patient_intake_at", None) else None,
+            "patient_exit_at": req.patient_exit_at.isoformat() if getattr(req, "patient_exit_at", None) else None,
+            "patient_exit_notes": getattr(req, "patient_exit_notes", None),
+            "request_created_at": req.created_at.isoformat(),
+            "request_updated_at": req.updated_at.isoformat(),
+        })
         requests.append(card)
     resource = db.scalar(select(HospitalResource).where(HospitalResource.hospital_id == hospital.id))
-    return {"hospital": hospital_me(db, user), "requests": requests, "server_time": datetime.now(timezone.utc).isoformat(), "refresh_seconds": 5, "resource": {"icu_beds_available": resource.icu_beds_available, "emergency_beds_available": resource.emergency_beds_available, "ventilators_available": resource.ventilators_available, "oxygen_available": resource.oxygen_available, "trauma_capable": resource.trauma_capable, "cardiac_capable": resource.cardiac_capable} if resource else None}
+    return {
+        "hospital": hospital_me(db, user),
+        "requests": requests,
+        "server_time": datetime.now(timezone.utc).isoformat(),
+        "refresh_seconds": 5,
+        "resource": {
+            "icu_beds_available": resource.icu_beds_available if resource else 18,
+            "emergency_beds_available": resource.emergency_beds_available if resource else 20,
+            "ventilators_available": resource.ventilators_available if resource else 8,
+            "oxygen_cylinders_available": getattr(resource, "oxygen_cylinders_available", 30) if resource else 30,
+            "oxygen_available": resource.oxygen_available if resource else True,
+            "trauma_capable": resource.trauma_capable if resource else True,
+            "cardiac_capable": resource.cardiac_capable if resource else True,
+        } if resource else None,
+    }
+
+
+@router.post("/hospital/requests/{request_id}/dismiss")
+def dismiss_hospital_request(request_id: uuid.UUID, db=Depends(get_db), user: User = Depends(get_current_user)):
+    profile = _hospital_profile(db, user)
+    req = db.get(HospitalAvailabilityRequest, request_id)
+    if not req or req.hospital_id != profile.hospital_id:
+        raise HTTPException(status_code=404, detail="Hospital availability request not found")
+    req.is_dismissed = True
+    req.dismissed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"status": "dismissed", "request_id": str(req.id)}
+
+
+@router.post("/hospital/requests/{request_id}/intake")
+def intake_patient(request_id: uuid.UUID, db=Depends(get_db), user: User = Depends(get_current_user)):
+    profile = _hospital_profile(db, user)
+    req = db.get(HospitalAvailabilityRequest, request_id)
+    if not req or req.hospital_id != profile.hospital_id:
+        raise HTTPException(status_code=404, detail="Hospital availability request not found")
+    req.patient_intake_at = datetime.now(timezone.utc)
+    emergency = db.get(Emergency, req.emergency_id)
+    if emergency:
+        emergency.status = "ARRIVED"
+        record_event(db, emergency.id, "PATIENT_HOSPITAL_INTAKE", {
+            "hospital_id": str(profile.hospital_id),
+            "request_id": str(req.id),
+            "intake_at": req.patient_intake_at.isoformat(),
+        })
+    db.commit()
+    return {"status": "admitted", "intake_at": req.patient_intake_at.isoformat()}
+
+
+@router.post("/hospital/requests/{request_id}/discharge")
+def discharge_patient(request_id: uuid.UUID, data: PatientExitRequest | None = None, db=Depends(get_db), user: User = Depends(get_current_user)):
+    profile = _hospital_profile(db, user)
+    req = db.get(HospitalAvailabilityRequest, request_id)
+    if not req or req.hospital_id != profile.hospital_id:
+        raise HTTPException(status_code=404, detail="Hospital availability request not found")
+    req.patient_exit_at = datetime.now(timezone.utc)
+    req.patient_exit_notes = data.notes if data else None
+    emergency = db.get(Emergency, req.emergency_id)
+    if emergency:
+        emergency.status = "COMPLETED"
+        record_event(db, emergency.id, "PATIENT_HOSPITAL_DISCHARGE", {
+            "hospital_id": str(profile.hospital_id),
+            "request_id": str(req.id),
+            "exit_at": req.patient_exit_at.isoformat(),
+            "notes": req.patient_exit_notes,
+        })
+    # Restore reserved capacity
+    resource = db.scalar(select(HospitalResource).where(HospitalResource.hospital_id == profile.hospital_id))
+    if resource:
+        resource.icu_beds_available = min(resource.icu_beds_available + 1, 100)
+        if hasattr(resource, "oxygen_cylinders_available"):
+            resource.oxygen_cylinders_available = min(resource.oxygen_cylinders_available + 1, 100)
+    db.commit()
+    return {"status": "discharged", "exit_at": req.patient_exit_at.isoformat(), "notes": req.patient_exit_notes}
 
 
 @router.post("/hospital/requests/{request_id}/respond")
@@ -513,10 +925,40 @@ def respond_hospital_request(request_id: uuid.UUID, data: HospitalResponseBody, 
     req.status = data.decision
     req.responded_by = user.id
     req.response_note = data.note
+
+    # Update hospital inventory for incoming ambulance
+    resource = db.scalar(select(HospitalResource).where(HospitalResource.hospital_id == profile.hospital_id))
+    allocated_icu = 0
+    allocated_o2 = 0
+    if data.decision == "ACCEPTED" and resource:
+        if resource.icu_beds_available > 0:
+            resource.icu_beds_available -= 1
+            allocated_icu = 1
+        if getattr(resource, "oxygen_cylinders_available", 0) > 0:
+            resource.oxygen_cylinders_available -= 1
+            allocated_o2 = 1
+
     event_type = "HOSPITAL_AVAILABILITY_ACCEPTED" if data.decision == "ACCEPTED" else "HOSPITAL_AVAILABILITY_DECLINED"
-    record_event(db, emergency.id, event_type, {"hospital_id": str(profile.hospital_id), "hospital_name": db.get(Hospital, profile.hospital_id).name, "request_id": str(req.id), "responded_by": str(user.id), "note": data.note, "decision": data.decision})
+    record_event(db, emergency.id, event_type, {
+        "hospital_id": str(profile.hospital_id),
+        "hospital_name": db.get(Hospital, profile.hospital_id).name,
+        "request_id": str(req.id),
+        "responded_by": str(user.id),
+        "note": data.note,
+        "decision": data.decision,
+        "allocated_icu_beds": allocated_icu,
+        "allocated_oxygen_cylinders": allocated_o2,
+        "remaining_icu_beds": resource.icu_beds_available if resource else None,
+        "remaining_oxygen_cylinders": getattr(resource, "oxygen_cylinders_available", None) if resource else None,
+    })
     db.commit()
-    return {"request_id": str(req.id), "decision": req.status, "note": req.response_note}
+    return {
+        "request_id": str(req.id),
+        "decision": req.status,
+        "note": req.response_note,
+        "remaining_icu_beds": resource.icu_beds_available if resource else None,
+        "remaining_oxygen_cylinders": getattr(resource, "oxygen_cylinders_available", None) if resource else None,
+    }
 
 
 @router.get("/emergencies/{emergency_id}/police-status")
@@ -528,6 +970,17 @@ def paramedic_police_status(emergency_id: uuid.UUID, db=Depends(get_db), user: U
     acknowledged = _latest_event(db, emergency.id, "POLICE_ALERT_ACKNOWLEDGED")
     cleared = _latest_event(db, emergency.id, "POLICE_JUNCTION_CLEARED")
     relays = db.scalars(select(EmergencyEvent).where(EmergencyEvent.emergency_id == emergency.id, EmergencyEvent.event_type == "POLICE_ALERT_RELAYED").order_by(EmergencyEvent.created_at.asc())).all()
+
+    # Look up hospital acknowledgment and live inventory
+    hosp = db.get(Hospital, emergency.hospital_id) if emergency.hospital_id else None
+    res = db.scalar(select(HospitalResource).where(HospitalResource.hospital_id == emergency.hospital_id)) if emergency.hospital_id else None
+    hospital_ack_event = db.scalar(
+        select(EmergencyEvent).where(
+            EmergencyEvent.emergency_id == emergency.id,
+            EmergencyEvent.event_type.in_(["HOSPITAL_AVAILABILITY_ACCEPTED", "HOSPITAL_ALERTED", "HOSPITAL_ASSIGNED"])
+        ).order_by(EmergencyEvent.created_at.desc())
+    )
+
     return {
         "emergency_id": str(emergency.id),
         "requested": requested is not None,
@@ -541,6 +994,11 @@ def paramedic_police_status(emergency_id: uuid.UUID, db=Depends(get_db), user: U
         "relay_count": len(relays),
         "last_relay": relays[-1].payload if relays else None,
         "last_relay_at": relays[-1].created_at.isoformat() if relays else None,
+        "hospital_acknowledged": hospital_ack_event is not None or emergency.hospital_id is not None,
+        "hospital_name": hosp.name if hosp else (emergency.hospital.name if hasattr(emergency, "hospital") and emergency.hospital else "Assigned Emergency Hospital"),
+        "remaining_icu_beds": res.icu_beds_available if res else 18,
+        "remaining_oxygen_cylinders": getattr(res, "oxygen_cylinders_available", 30) if res else 30,
+        "emergency_beds_available": res.emergency_beds_available if res else 20,
     }
 
 
@@ -550,7 +1008,42 @@ def paramedic_hospital_responses(emergency_id: uuid.UUID, db=Depends(get_db), us
     if _role(user) not in {"PARAMEDIC", "ADMIN"} or (_role(user) == "PARAMEDIC" and emergency.created_by != user.id):
         raise HTTPException(status_code=403, detail="Only the requesting paramedic can view hospital responses")
     requests = db.scalars(select(HospitalAvailabilityRequest).where(HospitalAvailabilityRequest.emergency_id == emergency.id).order_by(HospitalAvailabilityRequest.created_at.desc())).all()
-    return [{"request_id": str(r.id), "hospital_id": str(r.hospital_id), "hospital_name": (db.get(Hospital, r.hospital_id).name if db.get(Hospital, r.hospital_id) else "Hospital"), "status": r.status, "eta_seconds": r.requested_eta_seconds, "response_note": r.response_note, "updated_at": r.updated_at.isoformat()} for r in requests]
+
+    resp_list = []
+    for r in requests:
+        h = db.get(Hospital, r.hospital_id)
+        res = db.scalar(select(HospitalResource).where(HospitalResource.hospital_id == r.hospital_id))
+        resp_list.append({
+            "request_id": str(r.id),
+            "hospital_id": str(r.hospital_id),
+            "hospital_name": h.name if h else "Hospital",
+            "status": r.status,
+            "eta_seconds": r.requested_eta_seconds,
+            "response_note": r.response_note,
+            "updated_at": r.updated_at.isoformat(),
+            "remaining_icu_beds": res.icu_beds_available if res else 18,
+            "remaining_oxygen_cylinders": getattr(res, "oxygen_cylinders_available", 30) if res else 30,
+            "hospital_acknowledged": r.status in ("ACCEPTED", "ALERTED", "ASSIGNED"),
+        })
+
+    # If no explicit request rows exist yet, return the assigned hospital's live status
+    if not resp_list and emergency.hospital_id:
+        h = db.get(Hospital, emergency.hospital_id)
+        res = db.scalar(select(HospitalResource).where(HospitalResource.hospital_id == emergency.hospital_id))
+        resp_list.append({
+            "request_id": f"assigned-{emergency.id}",
+            "hospital_id": str(emergency.hospital_id),
+            "hospital_name": h.name if h else "Assigned Hospital",
+            "status": "ACCEPTED",
+            "eta_seconds": None,
+            "response_note": "Hospital assigned and alerted for incoming patient arrival.",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "remaining_icu_beds": res.icu_beds_available if res else 18,
+            "remaining_oxygen_cylinders": getattr(res, "oxygen_cylinders_available", 30) if res else 30,
+            "hospital_acknowledged": True,
+        })
+
+    return resp_list
 
 
 @router.get("/emergencies/{emergency_id}/route")
@@ -566,3 +1059,96 @@ async def shared_emergency_route(emergency_id: uuid.UUID, db=Depends(get_db), us
         return {"emergency_id": str(emergency.id), "origin_latitude": origin_lat, "origin_longitude": origin_lon, "destination_latitude": emergency.destination_latitude, "destination_longitude": emergency.destination_longitude, "distance_meters": result.distance_meters, "duration_seconds": result.duration_seconds, "polyline_points": route_points(result), "steps": result.steps or [], "provider": result.provider, "traffic_aware": result.traffic_aware, "route_profile": result.route_profile, "route_label": result.route_label}
     except Exception:
         return {"emergency_id": str(emergency.id), "origin_latitude": origin_lat, "origin_longitude": origin_lon, "destination_latitude": emergency.destination_latitude, "destination_longitude": emergency.destination_longitude, "distance_meters": None, "duration_seconds": None, "polyline_points": [[origin_lat, origin_lon], [emergency.destination_latitude, emergency.destination_longitude]], "steps": [], "provider": "straight-line-fallback", "traffic_aware": False, "route_profile": "fallback", "route_label": "Approximate line only; navigation routing unavailable"}
+
+
+@router.delete("/police/emergencies/{emergency_id}")
+def delete_police_emergency_alert(emergency_id: uuid.UUID, db=Depends(get_db), user: User = Depends(get_current_user)):
+    """Permanently delete police traffic clearance events for this emergency from database."""
+    _police_profile(db, user)
+    police_event_types = [
+        "POLICE_TRAFFIC_CLEARANCE_REQUESTED",
+        "POLICE_ALERT_ACKNOWLEDGED",
+        "POLICE_JUNCTION_CLEARED",
+        "POLICE_ALERT_RELAYED",
+    ]
+    events = db.scalars(
+        select(EmergencyEvent).where(
+            EmergencyEvent.emergency_id == emergency_id,
+            EmergencyEvent.event_type.in_(police_event_types),
+        )
+    ).all()
+    count = len(events)
+    for ev in events:
+        db.delete(ev)
+    db.commit()
+    return {"status": "deleted", "emergency_id": str(emergency_id), "events_removed": count}
+
+
+@router.delete("/hospital/requests/{request_id}")
+def delete_hospital_request(request_id: uuid.UUID, db=Depends(get_db), user: User = Depends(get_current_user)):
+    """Permanently delete hospital availability request from database."""
+    profile = _hospital_profile(db, user)
+    req = db.get(HospitalAvailabilityRequest, request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Hospital availability request not found")
+    if req.hospital_id != profile.hospital_id:
+        raise HTTPException(status_code=403, detail="You can only delete requests sent to your hospital")
+    db.delete(req)
+    db.commit()
+    return {"status": "deleted", "request_id": str(request_id)}
+
+
+class PoliceBatchDeleteRequest(BaseModel):
+    emergency_ids: list[uuid.UUID]
+
+
+@router.post("/police/emergencies/batch-delete")
+def batch_delete_police_alerts(
+    data: PoliceBatchDeleteRequest,
+    db=Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Batch permanently delete police clearance records from database."""
+    _police_profile(db, user)
+    police_event_types = [
+        "POLICE_TRAFFIC_CLEARANCE_REQUESTED",
+        "POLICE_ALERT_ACKNOWLEDGED",
+        "POLICE_JUNCTION_CLEARED",
+        "POLICE_ALERT_RELAYED",
+    ]
+    events = db.scalars(
+        select(EmergencyEvent).where(
+            EmergencyEvent.emergency_id.in_(data.emergency_ids),
+            EmergencyEvent.event_type.in_(police_event_types),
+        )
+    ).all()
+    count = len(events)
+    for ev in events:
+        db.delete(ev)
+    db.commit()
+    return {"status": "batch_deleted", "events_removed": count}
+
+
+class HospitalBatchDeleteRequest(BaseModel):
+    request_ids: list[uuid.UUID]
+
+
+@router.post("/hospital/requests/batch-delete")
+def batch_delete_hospital_requests(
+    data: HospitalBatchDeleteRequest,
+    db=Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Batch permanently delete hospital availability requests from database."""
+    profile = _hospital_profile(db, user)
+    requests = db.scalars(
+        select(HospitalAvailabilityRequest).where(
+            HospitalAvailabilityRequest.id.in_(data.request_ids),
+            HospitalAvailabilityRequest.hospital_id == profile.hospital_id,
+        )
+    ).all()
+    count = len(requests)
+    for req in requests:
+        db.delete(req)
+    db.commit()
+    return {"status": "batch_deleted", "requests_removed": count}

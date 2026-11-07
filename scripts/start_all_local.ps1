@@ -11,7 +11,8 @@ foreach ($app in $Apps) {
   if (!(Test-Path $app.Path)) { throw "Missing app directory: $($app.Path)" }
 }
 foreach ($app in $Apps) {
-  Start-Process powershell.exe -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-Command', $app.Command) -WorkingDirectory $app.Path
+  $cmd = "`$host.UI.RawUI.WindowTitle = '$($app.Name)'; $($app.Command)"
+  Start-Process powershell.exe -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-Command', $cmd) -WorkingDirectory $app.Path
 }
 Write-Host 'Started backend and three frontend terminal windows.' -ForegroundColor Green
 Write-Host 'URLs: API docs http://127.0.0.1:8000/docs | Paramedic 5050 | Police 5051 | Hospital 5052'

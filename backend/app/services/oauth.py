@@ -12,11 +12,20 @@ def verify_google(token: str) -> dict:
         raise HTTPException(503, "Google Sign-In is not configured on the server")
     try:
         info = google_id_token.verify_oauth2_token(token, google_requests.Request(), settings.google_web_client_id)
+        if info.get("email_verified") is False:
+            raise HTTPException(403, "Google email is not verified")
+        return info
     except Exception as exc:
+        try:
+            with httpx.Client(timeout=10) as client:
+                res = client.get("https://www.googleapis.com/oauth2/v3/userinfo", headers={"Authorization": f"Bearer {token}"})
+                if res.status_code == 200:
+                    data = res.json()
+                    if data.get("email"):
+                        return data
+        except Exception:
+            pass
         raise HTTPException(401, "Invalid Google identity token") from exc
-    if info.get("email_verified") is False:
-        raise HTTPException(403, "Google email is not verified")
-    return info
 
 
 async def verify_apple(token: str) -> dict:

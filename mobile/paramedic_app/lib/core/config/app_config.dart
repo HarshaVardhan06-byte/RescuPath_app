@@ -16,8 +16,11 @@ class AppConfig {
         : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
   }
 
-  static String get googleWebClientId =>
-      const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+  static String get googleWebClientId {
+    const override = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+    if (override.isNotEmpty) return override;
+    return '1084797807505-ceafnjn387ilrjl7oi7iigr654vuh9o4.apps.googleusercontent.com';
+  }
 
   static String get appleServiceId =>
       const String.fromEnvironment('APPLE_SERVICE_ID');

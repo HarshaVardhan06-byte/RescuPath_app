@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,5 +23,10 @@ class HospitalAvailabilityRequest(Base):
     ambulance_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     response_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_dismissed: Mapped[bool] = mapped_column(Boolean, default=False)
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    patient_intake_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    patient_exit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    patient_exit_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)

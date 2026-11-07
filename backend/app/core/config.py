@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,6 +8,17 @@ class Settings(BaseSettings):
     app_name: str = "RescuPath API"
     environment: str = "development"
     debug: bool = False
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug(cls, v: object) -> object:
+        if isinstance(v, str):
+            val = v.strip().lower()
+            if val in {"release", "prod", "production", "0", "false", "no", "off"}:
+                return False
+            if val in {"debug", "dev", "development", "1", "true", "yes", "on"}:
+                return True
+        return v
     database_url: str
     redis_url: str = "redis://localhost:6379/0"
     secret_key: str

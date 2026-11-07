@@ -46,6 +46,13 @@ class ApiClient {
     return _decode(response);
   }
 
+  Future<dynamic> delete(String path) async {
+    final response = await http
+        .delete(Uri.parse('${AppConfig.apiBaseUrl}$path'), headers: await _headers())
+        .timeout(const Duration(seconds: 25));
+    return _decode(response);
+  }
+
   dynamic _decode(http.Response response) {
     dynamic body;
     try {

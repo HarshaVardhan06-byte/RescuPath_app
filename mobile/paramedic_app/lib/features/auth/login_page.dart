@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -39,28 +40,60 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _google() async {
+    setState(() { loading = true; error = null; });
     try {
-      final google = GoogleSignIn(serverClientId: AppConfig.googleWebClientId.isEmpty ? null : AppConfig.googleWebClientId);
+      final google = GoogleSignIn(
+        clientId: AppConfig.googleWebClientId,
+        serverClientId: kIsWeb ? null : AppConfig.googleWebClientId,
+        scopes: const ['email', 'profile'],
+      );
       final account = await google.signIn();
-      if (account == null) return;
+      if (account == null) {
+        setState(() => loading = false);
+        return;
+      }
       final auth = await account.authentication;
-      if (auth.idToken == null) throw Exception('Google did not return an identity token.');
-      final r = await api.post('/auth/oauth/google', {'id_token': auth.idToken});
+      final token = (auth.idToken != null && auth.idToken!.isNotEmpty)
+          ? auth.idToken!
+          : (auth.accessToken ?? '');
+      if (token.isEmpty) {
+        throw Exception('Google did not return an identity or access token.');
+      }
+      final r = await api.post('/auth/oauth/google', {
+        'id_token': token,
+        'full_name': account.displayName,
+        'role': 'PARAMEDIC',
+      });
       await api.saveToken(r['access_token'].toString());
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
       if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => loading = false);
     }
   }
 
   Future<void> _apple() async {
+    setState(() { loading = true; error = null; });
     try {
-      final credential = await SignInWithApple.getAppleIDCredential(scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName]);
-      final r = await api.post('/auth/oauth/apple', {'id_token': credential.identityToken, 'full_name': [credential.givenName, credential.familyName].whereType<String>().join(' ')});
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+      );
+      if (credential.identityToken == null || credential.identityToken!.isEmpty) {
+        throw Exception('Apple did not return an identity token.');
+      }
+      final fullName = [credential.givenName, credential.familyName].whereType<String>().join(' ');
+      final r = await api.post('/auth/oauth/apple', {
+        'id_token': credential.identityToken,
+        'full_name': fullName.isEmpty ? 'Paramedic Officer' : fullName,
+        'role': 'PARAMEDIC',
+      });
       await api.saveToken(r['access_token'].toString());
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
       if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => loading = false);
     }
   }
 
@@ -89,13 +122,25 @@ class _LoginPageState extends State<LoginPage> {
                       Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => Navigator.pushNamed(context, '/forgot'), child: const Text('Forgot password?'))),
                       if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: const TextStyle(color: AppTheme.red, fontWeight: FontWeight.w700))),
                       PrimaryButton(label: loading ? 'Signing in…' : 'Sign in', icon: Icons.arrow_forward_rounded, onPressed: loading ? null : _login, background: AppTheme.blue),
-                      const SizedBox(height: 14),
-                      Row(children: const [Expanded(child: Divider()), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('OR', style: TextStyle(color: AppTheme.muted, fontSize: 10, fontWeight: FontWeight.w800))), Expanded(child: Divider())]),
-                      const SizedBox(height: 14),
-                      PrimaryButton(label: 'Continue with Google', icon: Icons.g_mobiledata, onPressed: _google, outlined: true, background: AppTheme.ink),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: const [
+                          Expanded(child: Divider()),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 10),
+                            child: Text(
+                              'OR CONTINUE WITH',
+                              style: TextStyle(color: AppTheme.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                            ),
+                          ),
+                          Expanded(child: Divider()),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      PrimaryButton(label: 'Continue with Google', icon: Icons.g_mobiledata, onPressed: loading ? null : _google, outlined: true, background: AppTheme.ink),
                       const SizedBox(height: 10),
-                      PrimaryButton(label: 'Continue with Apple', icon: Icons.apple, onPressed: _apple, outlined: true, background: AppTheme.ink),
-                      const SizedBox(height: 14),
+                      PrimaryButton(label: 'Continue with Apple', icon: Icons.apple, onPressed: loading ? null : _apple, outlined: true, background: AppTheme.ink),
+                      const SizedBox(height: 16),
                       TextButton(onPressed: () => Navigator.pushNamed(context, '/register'), child: const Text('Create a paramedic account')),
                     ],
                   ),

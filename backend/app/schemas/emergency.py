@@ -92,7 +92,8 @@ class LocationUpdate(BaseModel):
 
 
 class AssignHospitalRequest(BaseModel):
-    hospital_id: uuid.UUID
+    hospital_id: uuid.UUID | None = None
+    gst_number: str | None = None
 
 
 class StatusUpdateRequest(BaseModel):
@@ -105,7 +106,8 @@ class PoliceNotificationRequest(BaseModel):
 
 
 class HospitalArrivalNotificationRequest(BaseModel):
-    hospital_id: uuid.UUID
+    hospital_id: uuid.UUID | None = None
+    gst_number: str | None = None
 
     eta_seconds: int | None = Field(
         default=None,

@@ -13,6 +13,12 @@ class AppApi {
     return 'http://127.0.0.1:8000';
   }
 
+  static String get googleWebClientId {
+    const defined = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+    if (defined.isNotEmpty) return defined;
+    return '1084797807505-ceafnjn387ilrjl7oi7iigr654vuh9o4.apps.googleusercontent.com';
+  }
+
   Future<String?> token() => _storage.read(key: 'access_token');
   Future<void> saveToken(String value) => _storage.write(key: 'access_token', value: value);
   Future<void> logout() => _storage.delete(key: 'access_token');
@@ -30,6 +36,12 @@ class AppApi {
 
   Future<dynamic> put(String path, Map<String, dynamic> body) async {
     final response = await http.put(Uri.parse('$baseUrl$path'), headers: await _headers(), body: jsonEncode(body)).timeout(const Duration(seconds: 18));
+    return _decode(response);
+  }
+
+  Future<dynamic> delete(String path) async {
+    final headers = await _headers();
+    final response = await http.delete(Uri.parse('$baseUrl$path'), headers: headers).timeout(const Duration(seconds: 18));
     return _decode(response);
   }
 

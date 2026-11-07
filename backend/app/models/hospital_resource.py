@@ -16,6 +16,7 @@ class HospitalResource(Base):
     icu_beds_available: Mapped[int] = mapped_column(Integer, default=0)
     emergency_beds_available: Mapped[int] = mapped_column(Integer, default=0)
     ventilators_available: Mapped[int] = mapped_column(Integer, default=0)
+    oxygen_cylinders_available: Mapped[int] = mapped_column(Integer, default=20)
     oxygen_available: Mapped[bool] = mapped_column(Boolean, default=True)
     trauma_capable: Mapped[bool] = mapped_column(Boolean, default=False)
     cardiac_capable: Mapped[bool] = mapped_column(Boolean, default=False)

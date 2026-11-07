@@ -8,12 +8,18 @@ class RegisterRequest(BaseModel):
     phone: str | None = Field(default=None, max_length=30)
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str
     password: str
+
+class HospitalLoginRequest(BaseModel):
+    gst_number: str = Field(min_length=5, max_length=30)
+    password: str = Field(min_length=6, max_length=128)
+    set_password: bool = False
 
 class OAuthRequest(BaseModel):
     id_token: str = Field(min_length=20)
     full_name: str | None = Field(default=None, max_length=120)
+    role: str | None = Field(default=None)
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr

@@ -35,4 +35,16 @@ class UserPreferences {
 
   static Future<void> setAutoRouteRefresh(bool value) =>
       _writeBool('pref_auto_route_refresh', value);
+
+  static Future<Set<String>> get dismissedEmergencyIds async {
+    final value = await _storage.read(key: 'dismissed_emergency_ids');
+    if (value == null || value.isEmpty) return <String>{};
+    return value.split(',').where((e) => e.isNotEmpty).toSet();
+  }
+
+  static Future<void> dismissEmergency(String id) async {
+    final current = await dismissedEmergencyIds;
+    current.add(id);
+    await _storage.write(key: 'dismissed_emergency_ids', value: current.join(','));
+  }
 }

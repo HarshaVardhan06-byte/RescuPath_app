@@ -15,3 +15,9 @@ build/
 *.log
 assets/config.json
 android/local.properties
+
+.vercel
+.env*
+
+.gemini/
+.agents/
