@@ -1,0 +1,12 @@
+{
+  "framework": null,
+  "outputDirectory": "build/web",
+  "installCommand": "echo 'No install step required'",
+  "buildCommand": "bash ./vercel-build.sh",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

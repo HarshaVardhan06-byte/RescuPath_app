@@ -14,6 +14,7 @@ echo "Configuring Flutter..."
 flutter config --no-analytics
 
 echo "Building Flutter Web for RescuPath Paramedic App..."
-flutter build web --release --dart-define=API_BASE_URL=https://rescupath-app-1.onrender.com
+API_URL="${API_BASE_URL:-https://rescupath-backend.onrender.com}"
+flutter build web --release --dart-define=API_BASE_URL="$API_URL"
 
 echo "Build completed successfully!"

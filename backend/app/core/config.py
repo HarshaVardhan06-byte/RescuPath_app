@@ -19,12 +19,19 @@ class Settings(BaseSettings):
             if val in {"debug", "dev", "development", "1", "true", "yes", "on"}:
                 return True
         return v
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def parse_database_url(cls, v: object) -> object:
+        if isinstance(v, str) and v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql://", 1)
+        return v
     database_url: str
     redis_url: str = "redis://localhost:6379/0"
     secret_key: str
     access_token_expire_minutes: int = 30
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8080,http://127.0.0.1:8080,http://localhost:8694,http://127.0.0.1:8694"
-    cors_origin_regex: str | None = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    cors_origin_regex: str | None = r"^https?://(localhost|127\.0\.0\.1|.*\.vercel\.app|.*\.onrender\.com)(:\d+)?$"
     google_routes_api_key: str | None = None
     google_routes_base_url: str = "https://routes.googleapis.com"
     google_web_client_id: str | None = None

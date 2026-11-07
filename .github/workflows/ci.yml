@@ -1,0 +1,62 @@
+name: CI & Deployment Check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-check:
+    name: Backend Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          cd backend
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Backend Syntax Check
+        run: |
+          cd backend
+          python -m compileall app
+
+  flutter-check:
+    name: Flutter Apps Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Analyze Paramedic App
+        run: |
+          cd mobile/paramedic_app
+          flutter pub get
+          flutter analyze --no-fatal-infos
+
+      - name: Analyze Police App
+        run: |
+          cd mobile/police_app
+          flutter pub get
+          flutter analyze --no-fatal-infos
+
+      - name: Analyze Hospital App
+        run: |
+          cd mobile/hospital_app
+          flutter pub get
+          flutter analyze --no-fatal-infos
