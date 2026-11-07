@@ -11,7 +11,7 @@ from pathlib import Path
 # Ensure backend root is on sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from app.core.security import hash_password
 from app.db.session import SessionLocal
 from app.models.ambulance import Ambulance
@@ -175,6 +175,20 @@ def seed():
     default_pwd_hash = hash_password("password123")
 
     with SessionLocal() as db:
+        # Guarantee missing database columns exist
+        for col_sql in [
+            "ALTER TABLE hospital_availability_requests ADD COLUMN IF NOT EXISTS is_dismissed BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE hospital_availability_requests ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE hospital_availability_requests ADD COLUMN IF NOT EXISTS patient_intake_at TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE hospital_availability_requests ADD COLUMN IF NOT EXISTS patient_exit_at TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE hospital_availability_requests ADD COLUMN IF NOT EXISTS patient_exit_notes TEXT",
+        ]:
+            try:
+                db.execute(text(col_sql))
+                db.commit()
+            except Exception:
+                db.rollback()
+
         user_id_map: dict[str, uuid.UUID] = {}
         hospital_id_map: dict[str, uuid.UUID] = {}
 

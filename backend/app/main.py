@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import sqlalchemy as sa
 
 from app.core.config import settings
 from app.api import auth, hospitals, emergencies, ws, ambulances, coordination
@@ -23,6 +24,12 @@ app = FastAPI(
 def on_startup():
     try:
         Base.metadata.create_all(bind=engine)
+        with engine.begin() as conn:
+            conn.execute(sa.text("ALTER TABLE hospital_availability_requests ADD COLUMN IF NOT EXISTS is_dismissed BOOLEAN NOT NULL DEFAULT FALSE"))
+            conn.execute(sa.text("ALTER TABLE hospital_availability_requests ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMP WITH TIME ZONE"))
+            conn.execute(sa.text("ALTER TABLE hospital_availability_requests ADD COLUMN IF NOT EXISTS patient_intake_at TIMESTAMP WITH TIME ZONE"))
+            conn.execute(sa.text("ALTER TABLE hospital_availability_requests ADD COLUMN IF NOT EXISTS patient_exit_at TIMESTAMP WITH TIME ZONE"))
+            conn.execute(sa.text("ALTER TABLE hospital_availability_requests ADD COLUMN IF NOT EXISTS patient_exit_notes TEXT"))
         seed()
     except Exception as e:
         print("Startup database check/seed notice:", e)
