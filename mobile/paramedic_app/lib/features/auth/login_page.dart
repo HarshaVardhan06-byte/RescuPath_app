@@ -15,8 +15,8 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final email = TextEditingController();
-  final password = TextEditingController();
+  final email = TextEditingController(text: 'paramedic@rescupath.com');
+  final password = TextEditingController(text: 'password123');
   final api = ApiClient();
   bool loading = false;
   bool obscure = true;

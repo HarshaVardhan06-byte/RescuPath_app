@@ -23,7 +23,7 @@ class _HospitalLoginPageState extends State<HospitalLoginPage> {
 
   // Sign In Controllers
   final TextEditingController gstNumber = TextEditingController(text: '29AAETS5552M2ZS');
-  final TextEditingController loginEmail = TextEditingController();
+  final TextEditingController loginEmail = TextEditingController(text: 'hospital@rescupath.com');
   final TextEditingController password = TextEditingController(text: 'password123');
 
   // New Registration Controllers

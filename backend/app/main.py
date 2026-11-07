@@ -4,6 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api import auth, hospitals, emergencies, ws, ambulances, coordination
 from app.api.dashboard import router as dashboard_router
+from app.db.base import Base
+from app.db.session import engine
+import app.models  # noqa: F401
+from scripts.seed_demo import seed
 
 
 app = FastAPI(
@@ -12,6 +16,15 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+
+@app.on_event("startup")
+def on_startup():
+    try:
+        Base.metadata.create_all(bind=engine)
+        seed()
+    except Exception as e:
+        print("Startup database check/seed notice:", e)
 
 
 app.add_middleware(
