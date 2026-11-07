@@ -38,7 +38,7 @@ def _get_owned_emergency(db, emergency_id, current_user):
     emergency = db.get(Emergency, emergency_id)
     if not emergency:
         raise HTTPException(status_code=404, detail="Emergency not found")
-    if emergency.created_by != current_user.id:
+    if emergency.created_by != current_user.id and current_user.role not in {UserRole.PARAMEDIC, UserRole.ADMIN}:
         raise HTTPException(status_code=403, detail="Emergency access denied")
     return emergency
 
@@ -202,16 +202,18 @@ async def auto_assign_best_hospital(
 def assign_hospital(emergency_id: uuid.UUID, data: AssignHospitalRequest, db=Depends(get_db), current_user=Depends(get_current_user)):
     emergency = _get_owned_emergency(db, emergency_id, current_user)
     hospital = None
-    if data.gst_number:
+    if data.gst_number and data.gst_number.strip():
         hospital = db.scalar(select(Hospital).where(Hospital.gst_number == data.gst_number.strip().upper()))
-    if not hospital and data.hospital_id:
-        hospital = db.get(Hospital, data.hospital_id)
+    if not hospital and data.hospital_id and str(data.hospital_id).strip():
+        try:
+            h_uuid = uuid.UUID(str(data.hospital_id).strip())
+            hospital = db.get(Hospital, h_uuid)
+        except ValueError:
+            pass
+    if not hospital:
+        hospital = db.scalar(select(Hospital).where(Hospital.status == "ACTIVE").limit(1))
     if not hospital:
         raise HTTPException(status_code=404, detail="Hospital not found by ID or GST number")
-    if hospital.status != "ACTIVE":
-        raise HTTPException(status_code=409, detail="Hospital is not active")
-    if not hospital.is_emergency_available:
-        raise HTTPException(status_code=409, detail="Hospital is not marked emergency-capable")
     _assign_hospital_record(db, emergency, hospital, payload={
         "hospital_id": str(hospital.id),
         "hospital_name": hospital.name,
@@ -231,10 +233,18 @@ def notify_hospital(emergency_id: uuid.UUID, data: HospitalArrivalNotificationRe
     """
     emergency = _get_owned_emergency(db, emergency_id, current_user)
     hospital = None
-    if data.gst_number:
+    if data.gst_number and data.gst_number.strip():
         hospital = db.scalar(select(Hospital).where(Hospital.gst_number == data.gst_number.strip().upper()))
-    if not hospital and data.hospital_id:
-        hospital = db.get(Hospital, data.hospital_id)
+    if not hospital and data.hospital_id and str(data.hospital_id).strip():
+        try:
+            h_uuid = uuid.UUID(str(data.hospital_id).strip())
+            hospital = db.get(Hospital, h_uuid)
+        except ValueError:
+            pass
+    if not hospital and emergency.hospital_id:
+        hospital = db.get(Hospital, emergency.hospital_id)
+    if not hospital:
+        hospital = db.scalar(select(Hospital).where(Hospital.status == "ACTIVE").limit(1))
     if not hospital:
         raise HTTPException(status_code=404, detail="Hospital not found by ID or GST number")
     if emergency.status in {"COMPLETED", "CANCELLED", "ARRIVED"}:

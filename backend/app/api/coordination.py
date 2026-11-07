@@ -352,74 +352,95 @@ def register_hospital_full(data: HospitalRegisterFull, db=Depends(get_db)):
     if len(gst) < 8:
         raise HTTPException(status_code=400, detail="Invalid GST identification number format.")
 
-    # Check for existing GSTIN
-    existing_hosp = db.scalar(select(Hospital).where(Hospital.gst_number == gst))
-    if existing_hosp:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Hospital with GSTIN '{gst}' is already registered as '{existing_hosp.name}'. Please sign in with this GST ID or use Forgot Password."
-        )
-
-    # Check for existing admin email
+    # Check for existing GSTIN or admin email
     admin_email = str(data.admin_email).lower().strip()
+    existing_hosp = db.scalar(select(Hospital).where(Hospital.gst_number == gst))
     existing_user = db.scalar(select(User).where(User.email == admin_email))
-    if existing_user:
-        raise HTTPException(
-            status_code=409,
-            detail=f"An account with email '{admin_email}' already exists. Please sign in or use a different administrator email."
-        )
 
     try:
-        user = User(
-            full_name=data.admin_name.strip(),
-            email=admin_email,
-            phone=data.admin_phone.strip() if data.admin_phone else None,
-            password_hash=hash_password(data.password),
-            role=UserRole.HOSPITAL,
-        )
-        db.add(user)
-        db.flush()
+        if existing_user:
+            user = existing_user
+            user.password_hash = hash_password(data.password)
+            user.full_name = data.admin_name.strip()
+            user.is_active = True
+            if data.admin_phone:
+                user.phone = data.admin_phone.strip()
+        else:
+            user = User(
+                full_name=data.admin_name.strip(),
+                email=admin_email,
+                phone=data.admin_phone.strip() if data.admin_phone else None,
+                password_hash=hash_password(data.password),
+                role=UserRole.HOSPITAL,
+                is_active=True,
+            )
+            db.add(user)
+            db.flush()
 
         specialties_str = data.specialties.strip() if data.specialties else "Multi-Specialty Emergency Care"
-        hospital = Hospital(
-            name=data.hospital_name.strip(),
-            gst_number=gst,
-            gst_photo_url=data.gst_photo_url,
-            gst_verified=True,
-            specialties=specialties_str,
-            admin_name=data.admin_name.strip(),
-            admin_email=admin_email,
-            admin_phone=data.admin_phone.strip() if data.admin_phone else None,
-            staff_count=data.staff_count,
-            parking_available=data.parking_available,
-            latitude=data.latitude,
-            longitude=data.longitude,
-            status="ACTIVE",
-            is_emergency_available=True,
-        )
-        db.add(hospital)
-        db.flush()
+        if existing_hosp:
+            hospital = existing_hosp
+            hospital.name = data.hospital_name.strip()
+            hospital.admin_name = data.admin_name.strip()
+            hospital.admin_email = admin_email
+            hospital.admin_phone = data.admin_phone.strip() if data.admin_phone else hospital.admin_phone
+            hospital.specialties = specialties_str
+            hospital.status = "ACTIVE"
+            hospital.is_emergency_available = True
+            hospital.gst_verified = True
+        else:
+            hospital = Hospital(
+                name=data.hospital_name.strip(),
+                gst_number=gst,
+                gst_photo_url=data.gst_photo_url,
+                gst_verified=True,
+                specialties=specialties_str,
+                admin_name=data.admin_name.strip(),
+                admin_email=admin_email,
+                admin_phone=data.admin_phone.strip() if data.admin_phone else None,
+                staff_count=data.staff_count,
+                parking_available=data.parking_available,
+                latitude=data.latitude,
+                longitude=data.longitude,
+                status="ACTIVE",
+                is_emergency_available=True,
+            )
+            db.add(hospital)
+            db.flush()
 
         trauma = "trauma" in specialties_str.lower() or "emergency" in specialties_str.lower()
         cardiac = "cardiac" in specialties_str.lower() or "cardio" in specialties_str.lower() or "heart" in specialties_str.lower()
-        resource = HospitalResource(
-            hospital_id=hospital.id,
-            icu_beds_available=data.icu_beds_available,
-            emergency_beds_available=data.emergency_beds_available,
-            ventilators_available=data.ventilators_available,
-            oxygen_cylinders_available=data.oxygen_cylinders_available,
-            oxygen_available=True,
-            trauma_capable=trauma,
-            cardiac_capable=cardiac,
-        )
-        db.add(resource)
+        resource = db.scalar(select(HospitalResource).where(HospitalResource.hospital_id == hospital.id))
+        if not resource:
+            resource = HospitalResource(
+                hospital_id=hospital.id,
+                icu_beds_available=data.icu_beds_available,
+                emergency_beds_available=data.emergency_beds_available,
+                ventilators_available=data.ventilators_available,
+                oxygen_cylinders_available=data.oxygen_cylinders_available,
+                oxygen_available=True,
+                trauma_capable=trauma,
+                cardiac_capable=cardiac,
+            )
+            db.add(resource)
+        else:
+            resource.icu_beds_available = data.icu_beds_available
+            resource.emergency_beds_available = data.emergency_beds_available
+            resource.ventilators_available = data.ventilators_available
+            resource.oxygen_cylinders_available = data.oxygen_cylinders_available
 
-        profile = HospitalOperatorProfile(
-            user_id=user.id,
-            hospital_id=hospital.id,
-            department=data.department.strip() or "Emergency Department",
-        )
-        db.add(profile)
+        profile = db.scalar(select(HospitalOperatorProfile).where(HospitalOperatorProfile.user_id == user.id))
+        if not profile:
+            profile = HospitalOperatorProfile(
+                user_id=user.id,
+                hospital_id=hospital.id,
+                department=data.department.strip() or "Emergency Department",
+            )
+            db.add(profile)
+        else:
+            profile.hospital_id = hospital.id
+            profile.department = data.department.strip() or profile.department
+
         db.commit()
         db.refresh(user)
         db.refresh(hospital)

@@ -167,11 +167,31 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
   }
 
   Future<void> _informHospital() async {
-    final id = widget.hospital['hospital_id']?.toString(); if (id == null || id.isEmpty || informingHospital) return;
+    if (informingHospital) return;
     setState(() => informingHospital = true);
-    try { final raw = route?['duration_seconds']; await api.post('/emergencies/${widget.emergencyId}/notify-hospital', {'hospital_id': id, 'gst_number': widget.hospital['gst_number'], 'eta_seconds': raw is num ? raw.round() : null, 'phone': hospitalPhone, 'note': 'Ambulance is en route to $hospitalName. Please confirm emergency department availability.'}); if (mounted) { setState(() => status = 'HOSPITAL_ALERTED'); _toast('Hospital informed • ETA ${_etaText()}. Waiting for their response.', AppTheme.green); await _refreshHospitalResponses(); } }
-    catch (e) { if (mounted) _toast(e.toString().replaceFirst('Exception: ', ''), AppTheme.red); }
-    finally { if (mounted) setState(() => informingHospital = false); }
+    try {
+      final id = widget.hospital['hospital_id']?.toString() ?? widget.hospital['id']?.toString();
+      final gst = widget.hospital['gst_number']?.toString();
+      final raw = route?['duration_seconds'];
+      final body = <String, dynamic>{
+        'eta_seconds': raw is num ? raw.round() : null,
+        'phone': hospitalPhone,
+        'note': 'Ambulance is en route to . Please confirm emergency department availability.',
+      };
+      if (id != null && id.isNotEmpty) body['hospital_id'] = id;
+      if (gst != null && gst.isNotEmpty) body['gst_number'] = gst;
+
+      await api.post('/emergencies//notify-hospital', body);
+      if (mounted) {
+        setState(() => status = 'HOSPITAL_ALERTED');
+        _toast('Hospital informed • ETA . Waiting for their response.', AppTheme.green);
+        await _refreshHospitalResponses();
+      }
+    } catch (e) {
+      if (mounted) _toast(e.toString().replaceFirst('Exception: ', ''), AppTheme.red);
+    } finally {
+      if (mounted) setState(() => informingHospital = false);
+    }
   }
 
   Future<void> _callHospital() async {

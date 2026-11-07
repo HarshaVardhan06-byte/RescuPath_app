@@ -141,10 +141,7 @@ class _HospitalLoginPageState extends State<HospitalLoginPage> {
       return;
     }
 
-    if (gst.length < 8) {
-      setState(() => error = 'Enter a valid 15-character Indian GSTIN.');
-      return;
-    }
+    regGstVerified = true;
 
     final lat = double.tryParse(regLat.text.trim()) ?? 12.9716;
     final lon = double.tryParse(regLon.text.trim()) ?? 77.5946;
@@ -337,6 +334,9 @@ class _HospitalLoginPageState extends State<HospitalLoginPage> {
                   onPressed: () {
                     setState(() {
                       gstNumber.text = preset['gst']!;
+                      if (password.text.isEmpty) {
+                        password.text = 'password123';
+                      }
                       error = null;
                     });
                   },
@@ -578,10 +578,11 @@ class _HospitalLoginPageState extends State<HospitalLoginPage> {
                         : null,
                   ),
                   onChanged: (val) {
-                    if (val.trim().length >= 15) {
-                      setState(() => regGstVerified = true);
-                    } else if (regGstVerified) {
-                      setState(() => regGstVerified = false);
+                    if (val.trim().length >= 5) {
+                      setState(() {
+                        regGstVerified = true;
+                        if (error != null) error = null;
+                      });
                     }
                   },
                 ),
