@@ -25,8 +25,15 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
 class ResetPasswordRequest(BaseModel):
-    token: str = Field(min_length=20)
-    new_password: str = Field(min_length=8, max_length=128)
+    token: str | None = None
+    email: EmailStr | None = None
+    otp: str | None = None
+    new_password: str = Field(min_length=6, max_length=128)
+
+class ResetPasswordOtpRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(min_length=4, max_length=12)
+    new_password: str = Field(min_length=6, max_length=128)
 
 
 class DutyModeRequest(BaseModel):

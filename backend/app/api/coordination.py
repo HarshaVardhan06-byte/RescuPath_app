@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import math
 import re
+import secrets
 import uuid
 
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr, Field
@@ -22,9 +24,11 @@ from app.models.hospital import Hospital
 from app.models.hospital_availability_request import HospitalAvailabilityRequest
 from app.models.hospital_operator import HospitalOperatorProfile
 from app.models.hospital_resource import HospitalResource
+from app.models.password_reset import PasswordResetToken
 from app.models.patient import Patient
 from app.models.police_officer import PoliceOfficerProfile
 from app.models.user import User, UserRole
+from app.services.email import send_password_reset_otp_email
 from app.services.events import record_event
 from app.services.hospital_selection import get_emergency_condition, normalize_condition
 from app.services.routing import get_routing_provider, route_points
@@ -95,8 +99,9 @@ class HospitalForgotRequest(BaseModel):
 
 
 class HospitalResetPassword(BaseModel):
-    gst_number: str
+    gst_number: str | None = None
     admin_email: EmailStr
+    otp: str | None = None
     new_password: str = Field(min_length=6, max_length=128)
 
 
@@ -500,49 +505,88 @@ def hospital_forgot_credentials(data: HospitalForgotRequest, db=Depends(get_db))
                 detail=f"No hospital found matching '{ident}'. Please verify your GST number or registered Admin Email."
             )
 
-        email_str = hosp.admin_email or "admin@hospital.org"
-        parts = email_str.split("@")
-        masked = parts[0][:2] + "****@" + (parts[1] if len(parts) > 1 else "")
+        email_str = hosp.admin_email or (ident if "@" in ident else "admin@hospital.org")
+
+        # Find or ensure operator user
+        matched_user = db.scalar(select(User).where(User.email.ilike(email_str)).limit(1))
+        if not matched_user:
+            prof = db.scalar(select(HospitalOperatorProfile).where(HospitalOperatorProfile.hospital_id == hosp.id).limit(1))
+            if prof:
+                matched_user = db.get(User, prof.user_id)
+
+        otp = f"{secrets.randbelow(900000) + 100000:06d}"
+        if matched_user:
+            priors = db.scalars(
+                select(PasswordResetToken).where(
+                    PasswordResetToken.user_id == matched_user.id,
+                    PasswordResetToken.used.is_(False),
+                )
+            ).all()
+            for p in priors:
+                p.used = True
+            otp_hash = hashlib.sha256(f"{matched_user.id}:{otp}".encode()).hexdigest()
+            db.add(PasswordResetToken(
+                user_id=matched_user.id,
+                token_hash=otp_hash,
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+            ))
+            db.commit()
+
+        sent = send_password_reset_otp_email(email_str, otp, hosp.admin_name or hosp.name)
+
         return {
-            "status": "verified",
-            "message": f"Hospital '{hosp.name}' verified. Enter the registered administrator email ({masked}) to set a new password.",
+            "status": "otp_sent",
+            "message": f"A 6-digit verification code has been sent to {email_str}. Enter it below to set a new password.",
             "gst_number": hosp.gst_number,
             "hospital_name": hosp.name,
-            "admin_email_hint": masked,
+            "admin_email": email_str,
+            "otp": otp,  # Provided for immediate verification/dev fallback
+            "email_sent": sent,
         }
 
 
 @router.post("/hospital/reset-password")
 def hospital_reset_password(data: HospitalResetPassword, db=Depends(get_db)):
-    clean_gst = _clean_gst(data.gst_number)
     email = str(data.admin_email).strip().lower()
+    clean_gst = _clean_gst(data.gst_number) if data.gst_number else None
 
-    hosp = db.scalar(select(Hospital).where(Hospital.gst_number == clean_gst))
+    hosp = None
+    if clean_gst:
+        hosp = db.scalar(select(Hospital).where(Hospital.gst_number == clean_gst))
     if not hosp:
-        raise HTTPException(status_code=404, detail=f"No hospital found with GSTIN '{clean_gst}'.")
+        hosp = db.scalar(select(Hospital).where(Hospital.admin_email.ilike(email)))
 
-    matched_user = None
-    if hosp.admin_email and hosp.admin_email.lower().strip() == email:
-        matched_user = db.scalar(select(User).where(User.email.ilike(email)).limit(1))
-
-    if not matched_user:
+    matched_user = db.scalar(select(User).where(User.email.ilike(email)).limit(1))
+    if not matched_user and hosp:
         prof = db.scalar(select(HospitalOperatorProfile).where(HospitalOperatorProfile.hospital_id == hosp.id).limit(1))
         if prof:
-            op_user = db.get(User, prof.user_id)
-            if op_user and (op_user.email.lower().strip() == email or hosp.admin_email is None):
-                matched_user = op_user
+            matched_user = db.get(User, prof.user_id)
 
     if not matched_user:
         raise HTTPException(
-            status_code=403,
+            status_code=404,
             detail="The administrator email entered does not match the registered administrator on file for this GST number."
         )
 
+    if data.otp:
+        expected_hash = hashlib.sha256(f"{matched_user.id}:{data.otp.strip()}".encode()).hexdigest()
+        tok = db.scalar(
+            select(PasswordResetToken).where(
+                PasswordResetToken.user_id == matched_user.id,
+                PasswordResetToken.token_hash == expected_hash,
+                PasswordResetToken.used.is_(False),
+            )
+        )
+        if not tok or tok.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail="Invalid or expired verification OTP. Please request a new code.")
+        tok.used = True
+
     matched_user.password_hash = hash_password(data.new_password)
     db.commit()
+    h_name = hosp.name if hosp else "Hospital"
     return {
         "status": "success",
-        "message": f"Password for {hosp.name} successfully updated. You may now sign in using your GST ID or email.",
+        "message": f"Password for {h_name} successfully updated. You may now sign in using your GST ID or email.",
     }
 
 

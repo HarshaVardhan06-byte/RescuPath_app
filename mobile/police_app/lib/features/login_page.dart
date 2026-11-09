@@ -116,6 +116,19 @@ class _PoliceLoginPageState extends State<PoliceLoginPage> {
           ],
           TextField(controller: email, keyboardType: TextInputType.emailAddress, autocorrect: false, decoration: const InputDecoration(labelText: 'Work email', prefixIcon: Icon(Icons.alternate_email))), const SizedBox(height: 10),
           TextField(controller: password, obscureText: obscure, decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined)))),
+          if (!registering)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: busy ? null : _openForgotPassword,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('Forgot password?', style: TextStyle(color: LuxuryTheme.blue, fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+            ),
           if (error != null) ...[const SizedBox(height: 12), Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: LuxuryTheme.red.withValues(alpha: .08), borderRadius: BorderRadius.circular(12)), child: Text(error!, style: const TextStyle(color: LuxuryTheme.red, fontWeight: FontWeight.w700)))],
           const SizedBox(height: 16),
           FilledButton.icon(
@@ -165,5 +178,289 @@ class _PoliceLoginPageState extends State<PoliceLoginPage> {
     )))),
   );
 
+  void _openForgotPassword() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _PoliceForgotSheet(
+        api: api,
+        initialEmail: email.text.trim(),
+        onSuccess: (newPwd, userEmail) {
+          setState(() {
+            email.text = userEmail;
+            password.text = newPwd;
+            error = null;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Password updated! You can now sign in with your new password.'),
+              backgroundColor: LuxuryTheme.green,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override void dispose() { name.dispose(); email.dispose(); password.dispose(); phone.dispose(); badge.dispose(); station.dispose(); junction.dispose(); super.dispose(); }
+}
+
+class _PoliceForgotSheet extends StatefulWidget {
+  final AppApi api;
+  final String initialEmail;
+  final void Function(String newPassword, String userEmail) onSuccess;
+
+  const _PoliceForgotSheet({
+    required this.api,
+    required this.initialEmail,
+    required this.onSuccess,
+  });
+
+  @override
+  State<_PoliceForgotSheet> createState() => _PoliceForgotSheetState();
+}
+
+class _PoliceForgotSheetState extends State<_PoliceForgotSheet> {
+  final emailCtrl = TextEditingController();
+  final otpCtrl = TextEditingController();
+  final newPwdCtrl = TextEditingController();
+  final confirmPwdCtrl = TextEditingController();
+
+  int step = 1; // 1 = Request OTP, 2 = Verify & Set Password
+  bool loading = false;
+  String? modalError;
+  String? modalSuccess;
+  bool obscure = true;
+
+  @override
+  void initState() {
+    super.initState();
+    emailCtrl.text = widget.initialEmail;
+  }
+
+  Future<void> _sendOtp() async {
+    final mail = emailCtrl.text.trim();
+    if (mail.isEmpty || !mail.contains('@')) {
+      setState(() => modalError = 'Enter a valid officer work email or Gmail.');
+      return;
+    }
+    setState(() {
+      loading = true;
+      modalError = null;
+      modalSuccess = null;
+    });
+    try {
+      final res = await widget.api.post('/auth/forgot-password', {'email': mail});
+      if (mounted) {
+        setState(() {
+          step = 2;
+          modalSuccess = res['message']?.toString() ?? 'Verification code sent to your Gmail.';
+          if (res['otp'] != null && otpCtrl.text.isEmpty) {
+            otpCtrl.text = res['otp'].toString();
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => modalError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    final mail = emailCtrl.text.trim();
+    final otp = otpCtrl.text.trim();
+    final pwd = newPwdCtrl.text;
+    final confirm = confirmPwdCtrl.text;
+
+    if (otp.length < 4) {
+      setState(() => modalError = 'Enter the 6-digit verification code.');
+      return;
+    }
+    if (pwd.length < 6) {
+      setState(() => modalError = 'Password must be at least 6 characters.');
+      return;
+    }
+    if (pwd != confirm) {
+      setState(() => modalError = 'Passwords do not match.');
+      return;
+    }
+
+    setState(() {
+      loading = true;
+      modalError = null;
+      modalSuccess = null;
+    });
+    try {
+      await widget.api.post('/auth/reset-password', {
+        'email': mail,
+        'otp': otp,
+        'new_password': pwd,
+      });
+      if (mounted) {
+        widget.onSuccess(pwd, mail);
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) setState(() => modalError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Icon(Icons.lock_reset_rounded, color: LuxuryTheme.blue, size: 24),
+                const SizedBox(width: 8),
+                Text(
+                  step == 1 ? 'Reset Police Password' : 'Enter Verification OTP',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: LuxuryTheme.ink),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              step == 1
+                  ? 'Enter your registered Gmail or police work email to receive an automated verification code.'
+                  : 'Enter the 6-digit verification code sent to ${emailCtrl.text.trim()} and your new password.',
+              style: const TextStyle(fontSize: 12, color: LuxuryTheme.muted, height: 1.4),
+            ),
+            const SizedBox(height: 16),
+            if (step == 1) ...[
+              TextField(
+                controller: emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: 'Officer work email / Gmail',
+                  prefixIcon: Icon(Icons.alternate_email),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: loading ? null : _sendOtp,
+                icon: loading
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.mark_email_read_outlined),
+                label: Text(loading ? 'Sending OTP…' : 'Send Verification OTP'),
+                style: FilledButton.styleFrom(backgroundColor: LuxuryTheme.blue, minimumSize: const Size.fromHeight(48)),
+              ),
+            ] else ...[
+              TextField(
+                controller: otpCtrl,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                decoration: const InputDecoration(
+                  labelText: '6-digit OTP code',
+                  prefixIcon: Icon(Icons.pin_outlined),
+                  counterText: '',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: newPwdCtrl,
+                obscureText: obscure,
+                decoration: InputDecoration(
+                  labelText: 'New password',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  suffixIcon: IconButton(
+                    icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                    onPressed: () => setState(() => obscure = !obscure),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: confirmPwdCtrl,
+                obscureText: obscure,
+                decoration: const InputDecoration(
+                  labelText: 'Confirm new password',
+                  prefixIcon: Icon(Icons.lock_reset_outlined),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: loading ? null : _resetPassword,
+                icon: loading
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.check_circle_rounded),
+                label: Text(loading ? 'Updating…' : 'Confirm & Reset Password'),
+                style: FilledButton.styleFrom(backgroundColor: LuxuryTheme.green, minimumSize: const Size.fromHeight(48)),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton.icon(
+                    onPressed: loading ? null : _sendOtp,
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text('Resend code', style: TextStyle(fontSize: 12)),
+                  ),
+                  TextButton(
+                    onPressed: loading ? null : () => setState(() { step = 1; modalError = null; modalSuccess = null; }),
+                    child: const Text('Change email', style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
+            ],
+            if (modalSuccess != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: LuxuryTheme.green.withValues(alpha: .1), borderRadius: BorderRadius.circular(10)),
+                child: Text(modalSuccess!, style: const TextStyle(color: LuxuryTheme.green, fontWeight: FontWeight.w700, fontSize: 12)),
+              ),
+            ],
+            if (modalError != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: LuxuryTheme.red.withValues(alpha: .1), borderRadius: BorderRadius.circular(10)),
+                child: Text(modalError!, style: const TextStyle(color: LuxuryTheme.red, fontWeight: FontWeight.w700, fontSize: 12)),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    emailCtrl.dispose();
+    otpCtrl.dispose();
+    newPwdCtrl.dispose();
+    confirmPwdCtrl.dispose();
+    super.dispose();
+  }
 }

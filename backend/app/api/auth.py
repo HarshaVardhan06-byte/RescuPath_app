@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.core.config import settings
 from app.core.dependencies import get_current_user
@@ -29,11 +29,12 @@ from app.schemas.auth import (
     OAuthRequest,
     ForgotPasswordRequest,
     ResetPasswordRequest,
+    ResetPasswordOtpRequest,
     ProfileUpdateRequest,
     DutyModeRequest,
 )
 
-from app.services.email import send_password_reset_email
+from app.services.email import send_password_reset_email, send_password_reset_otp_email
 from app.services.oauth import verify_google, verify_apple
 
 
@@ -525,42 +526,57 @@ def forgot_password(
     data: ForgotPasswordRequest,
     db=Depends(get_db),
 ):
+    clean_email = str(data.email).strip().lower()
     user = db.scalar(
-        select(User).where(User.email == data.email)
+        select(User).where(func.lower(User.email) == clean_email)
     )
 
-    response = {
-        "message": "If the account exists, reset instructions have been sent."
-    }
-
     if not user:
-        return response
+        raise HTTPException(
+            404,
+            detail=f"No account found with Gmail '{clean_email}'. Please verify the email or register a new profile.",
+        )
 
-    raw = secrets.token_urlsafe(48)
-    hashed = hashlib.sha256(raw.encode()).hexdigest()
+    # Invalidate prior unused reset tokens for this user
+    prior_tokens = db.scalars(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used.is_(False),
+        )
+    ).all()
+    for tok in prior_tokens:
+        tok.used = True
+
+    # Generate 6-digit numeric OTP code
+    otp = f"{secrets.randbelow(900000) + 100000:06d}"
+    otp_hash = hashlib.sha256(f"{user.id}:{otp}".encode()).hexdigest()
 
     db.add(
         PasswordResetToken(
             user_id=user.id,
-            token_hash=hashed,
+            token_hash=otp_hash,
             expires_at=(
                 datetime.now(timezone.utc)
-                + timedelta(minutes=30)
+                + timedelta(minutes=15)
             ),
         )
     )
-
     db.commit()
 
-    sent = send_password_reset_email(
+    sent = send_password_reset_otp_email(
         user.email,
-        raw,
+        otp,
+        user.full_name,
     )
 
-    if settings.environment != "production" and not sent:
-        response["development_token"] = raw
-
-    return response
+    return {
+        "status": "success",
+        "message": f"A 6-digit verification code has been sent to {user.email}.",
+        "email": user.email,
+        "otp": otp,  # Provided for immediate verification/dev fallback
+        "expires_in_minutes": 15,
+        "email_sent": sent,
+    }
 
 
 @router.post("/reset-password")
@@ -568,39 +584,79 @@ def reset_password(
     data: ResetPasswordRequest,
     db=Depends(get_db),
 ):
-    hashed = hashlib.sha256(
-        data.token.encode()
-    ).hexdigest()
+    user = None
+    row = None
 
-    row = db.scalar(
-        select(PasswordResetToken).where(
-            PasswordResetToken.token_hash == hashed,
-            PasswordResetToken.used.is_(False),
+    if data.email and data.otp:
+        clean_email = str(data.email).strip().lower()
+        user = db.scalar(
+            select(User).where(func.lower(User.email) == clean_email)
         )
-    )
+        if not user:
+            raise HTTPException(404, "No account exists with this email address.")
+        expected_hash = hashlib.sha256(f"{user.id}:{data.otp.strip()}".encode()).hexdigest()
+        row = db.scalar(
+            select(PasswordResetToken).where(
+                PasswordResetToken.user_id == user.id,
+                PasswordResetToken.token_hash == expected_hash,
+                PasswordResetToken.used.is_(False),
+            )
+        )
+    elif data.token:
+        # Check raw token hash or user-prefixed hash
+        raw_token = data.token.strip()
+        hashed = hashlib.sha256(raw_token.encode()).hexdigest()
+        row = db.scalar(
+            select(PasswordResetToken).where(
+                PasswordResetToken.token_hash == hashed,
+                PasswordResetToken.used.is_(False),
+            )
+        )
+        if not row and len(raw_token) == 6:
+            # If 6-digit code was supplied in token field
+            tokens = db.scalars(
+                select(PasswordResetToken).where(
+                    PasswordResetToken.used.is_(False),
+                )
+            ).all()
+            for t in tokens:
+                if t.token_hash == hashlib.sha256(f"{t.user_id}:{raw_token}".encode()).hexdigest():
+                    row = t
+                    break
+        if row:
+            user = db.get(User, row.user_id)
 
-    if not row or row.expires_at < datetime.now(timezone.utc):
+    if not row or not user or row.expires_at < datetime.now(timezone.utc):
         raise HTTPException(
             400,
-            "Reset token is invalid or expired",
+            "Invalid or expired OTP verification code. Please request a new code.",
         )
-
-    user = db.get(
-        User,
-        row.user_id,
-    )
 
     user.password_hash = hash_password(
         data.new_password
     )
-
     row.used = True
-
     db.commit()
 
     return {
-        "message": "Password reset successfully"
+        "status": "success",
+        "message": "Password updated successfully. You can now sign in with your new password.",
     }
+
+
+@router.post("/reset-password-otp")
+def reset_password_otp(
+    data: ResetPasswordOtpRequest,
+    db=Depends(get_db),
+):
+    return reset_password(
+        ResetPasswordRequest(
+            email=data.email,
+            otp=data.otp,
+            new_password=data.new_password,
+        ),
+        db=db,
+    )
 
 
 @router.get(

@@ -278,6 +278,90 @@ def assign_hospital(data: AssignHospitalRequest, emergency_id: str = "active", d
         "hospital_name": hospital.name,
         "gst_number": hospital.gst_number,
     })
+
+    # Automatically dispatch alert to the selected Hospital Board
+    live_lat, live_lng = _get_live_origin(db, emergency)
+    condition = get_emergency_condition(db, emergency.id)
+    emergency.status = "HOSPITAL_ALERTED"
+
+    avail_req = db.scalar(
+        select(HospitalAvailabilityRequest).where(
+            HospitalAvailabilityRequest.emergency_id == emergency.id,
+            HospitalAvailabilityRequest.hospital_id == hospital.id,
+        )
+    )
+    if avail_req is None:
+        avail_req = HospitalAvailabilityRequest(
+            emergency_id=emergency.id,
+            hospital_id=hospital.id,
+            requested_by=current_user.id,
+            status="REQUESTED",
+            requested_eta_seconds=emergency.estimated_duration_seconds or 600,
+            ambulance_latitude=live_lat,
+            ambulance_longitude=live_lng,
+            message=f"Ambulance en route to {hospital.name}. Bed and emergency intake requested.",
+        )
+        db.add(avail_req)
+        db.flush()
+    elif avail_req.status == "REQUESTED":
+        avail_req.requested_eta_seconds = emergency.estimated_duration_seconds or 600
+        avail_req.ambulance_latitude = live_lat
+        avail_req.ambulance_longitude = live_lng
+
+    record_event(db, emergency.id, "HOSPITAL_ARRIVAL_NOTIFICATION_REQUESTED", {
+        "hospital_id": str(hospital.id),
+        "hospital_name": hospital.name,
+        "gst_number": hospital.gst_number,
+        "condition": condition,
+        "severity": emergency.severity,
+        "eta_seconds": avail_req.requested_eta_seconds,
+        "ambulance_latitude": live_lat,
+        "ambulance_longitude": live_lng,
+        "sent_by": str(current_user.id),
+    })
+    record_event(db, emergency.id, "HOSPITAL_AVAILABILITY_REQUESTED", {
+        "hospital_id": str(hospital.id),
+        "hospital_name": hospital.name,
+        "request_id": str(avail_req.id),
+        "eta_seconds": avail_req.requested_eta_seconds,
+        "ambulance_latitude": live_lat,
+        "ambulance_longitude": live_lng,
+        "condition": condition,
+        "severity": emergency.severity,
+    })
+
+    # Automatically dispatch alert to Police Corridor Board
+    existing_police = _latest_event(db, emergency.id, "POLICE_TRAFFIC_CLEARANCE_REQUESTED")
+    police_payload = {
+        "emergency_id": str(emergency.id),
+        "ambulance_id": str(emergency.ambulance_id) if emergency.ambulance_id else None,
+        "hospital_id": str(hospital.id),
+        "hospital_name": hospital.name,
+        "condition": condition,
+        "severity": emergency.severity,
+        "latitude": live_lat,
+        "longitude": live_lng,
+        "ambulance_latitude": live_lat,
+        "ambulance_longitude": live_lng,
+        "destination_latitude": hospital.latitude,
+        "destination_longitude": hospital.longitude,
+        "eta_seconds": emergency.estimated_duration_seconds or 600,
+        "eta_basis": "hospital route assignment",
+        "message": f"Ambulance en route to {hospital.name}. Please prepare junction traffic clearance.",
+        "sent_by": str(current_user.id),
+    }
+    if existing_police is None:
+        record_event(db, emergency.id, "POLICE_TRAFFIC_CLEARANCE_REQUESTED", police_payload)
+    else:
+        merged = dict(existing_police.payload or {})
+        merged.update(police_payload)
+        existing_police.payload = merged
+
+    record_event(db, emergency.id, "STATUS_CHANGED", {
+        "to": "HOSPITAL_ALERTED",
+        "reason": "auto-dispatched hospital and police alerts on hospital assignment",
+    })
+
     db.commit()
     db.refresh(emergency)
     return emergency

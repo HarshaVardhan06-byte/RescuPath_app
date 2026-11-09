@@ -21,6 +21,10 @@ services:
         value: "^https?://.*"
       - key: ALLOW_PUBLIC_OPERATIONS_REGISTRATION
         value: "true"
+      - key: SMTP_HOST
+        value: "smtp.gmail.com"
+      - key: SMTP_PORT
+        value: "587"
 
 databases:
   - name: rescupath-db

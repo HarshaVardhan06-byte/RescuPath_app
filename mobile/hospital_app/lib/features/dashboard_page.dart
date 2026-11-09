@@ -1893,9 +1893,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                  pendingCount == 0
-                                      ? '00 Pending Arrival Orders • $historyCount Records in History Archive • ${h['hospital_name'] ?? 'Your facility'}'
-                                      : '$pendingCount Pending Arrival Orders • $historyCount Records in History Archive • ${h['hospital_name'] ?? 'Your facility'}',
+                                  '$pendingCount Pending Arrival Orders • $historyCount Records in History Archive • ${h['hospital_name'] ?? 'Your facility'}',
                                   style: TextStyle(color: Colors.white.withValues(alpha: .88), fontSize: 12)),
                               const SizedBox(height: 17),
                               LayoutBuilder(builder: (context, constraints) {
@@ -1906,7 +1904,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                     width: width,
                                     child: _filterCard(
                                       label: 'Pending',
-                                      count: pendingCount > 0 ? pendingCount.toString().padLeft(2, '0') : '00',
+                                      count: '$pendingCount',
                                       icon: Icons.pending_actions_rounded,
                                       color: LuxuryTheme.red,
                                       isSelected: activeFilter == 'PENDING',
@@ -1917,7 +1915,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                     width: width,
                                     child: _filterCard(
                                       label: 'Accepted',
-                                      count: acceptedCount.toString().padLeft(2, '0'),
+                                      count: '$acceptedCount',
                                       icon: Icons.check_circle_rounded,
                                       color: LuxuryTheme.green,
                                       isSelected: activeFilter == 'ACCEPTED',
@@ -1928,7 +1926,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                     width: width,
                                     child: _filterCard(
                                       label: 'Declined',
-                                      count: declinedCount.toString().padLeft(2, '0'),
+                                      count: '$declinedCount',
                                       icon: Icons.cancel_rounded,
                                       color: LuxuryTheme.amber,
                                       isSelected: activeFilter == 'DECLINED',
@@ -1939,7 +1937,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                     width: width,
                                     child: _filterCard(
                                       label: 'History',
-                                      count: historyCount.toString().padLeft(2, '0'),
+                                      count: '$historyCount',
                                       icon: Icons.history_rounded,
                                       color: LuxuryTheme.blue,
                                       isSelected: activeFilter == 'HISTORY',

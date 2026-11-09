@@ -42,6 +42,8 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
   OverlayEntry? _toastEntry;
   Timer? _toastTimer;
   double currentSpeedMps = 0;
+  bool _isFirstHospitalResponseFetch = true;
+  bool _isFirstPoliceFetch = true;
 
   String get hospitalName => widget.hospital['hospital_name']?.toString() ?? 'Selected Hospital';
   String? get hospitalPhone => widget.hospital['phone']?.toString();
@@ -84,11 +86,38 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
       _startTracking(highAccuracy);
       if (await UserPreferences.autoRouteRefresh) { routeTimer = Timer.periodic(const Duration(seconds: 12), (_) => _refreshRoute()); }
       statusTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refreshEmergency());
-      hospitalResponseTimer = Timer.periodic(const Duration(seconds: 8), (_) { _refreshHospitalResponses(); _refreshPoliceStatus(); });
+
+      // Automatically send alert requests to both Hospital and Police immediately
+      await _autoDispatchHospitalAndPolice();
+
+      hospitalResponseTimer = Timer.periodic(const Duration(seconds: 5), (_) { _refreshHospitalResponses(); _refreshPoliceStatus(); });
       await _refreshHospitalResponses();
       await _refreshPoliceStatus();
     } catch (e) { if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', '')); }
     finally { if (mounted) setState(() => loading = false); }
+  }
+
+  Future<void> _autoDispatchHospitalAndPolice() async {
+    try {
+      final id = widget.hospital['hospital_id']?.toString() ?? widget.hospital['id']?.toString();
+      final gst = widget.hospital['gst_number']?.toString();
+      final raw = route?['duration_seconds'];
+      final body = <String, dynamic>{
+        'eta_seconds': raw is num ? raw.round() : null,
+        'phone': hospitalPhone,
+        'note': 'Ambulance is en route to $hospitalName. Bed availability requested.',
+      };
+      if (id != null && id.isNotEmpty) body['hospital_id'] = id;
+      if (gst != null && gst.isNotEmpty) body['gst_number'] = gst;
+
+      await Future.wait([
+        api.post('/emergencies/${_safeEmergencyId}/notify-hospital', body).catchError((_) => null),
+        api.post('/emergencies/${_safeEmergencyId}/notify-police', {'eta_seconds': raw is num ? raw.round() : null}).catchError((_) => null),
+      ]);
+      if (mounted) {
+        setState(() => status = 'HOSPITAL_ALERTED');
+      }
+    } catch (_) {}
   }
 
   void _setDestination(Map<String, dynamic>? e) {
@@ -103,7 +132,9 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
       final raw = await api.get('/coordination/emergencies/${_safeEmergencyId}/hospital-availability');
       if (!mounted || raw is! List) return;
       final rows = raw.whereType<Map>().map((x) => Map<String, dynamic>.from(x)).toList();
-      final isFirstResponseLoad = hospitalResponses.isEmpty;
+      final isFirst = _isFirstHospitalResponseFetch;
+      _isFirstHospitalResponseFetch = false;
+
       final previousStatuses = <String, String>{
         for (final row in hospitalResponses)
           if (row['request_id'] != null)
@@ -120,7 +151,8 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
             previousStatuses[id] == 'REQUESTED';
         return id != null &&
             hasTerminalResponse &&
-            (changedFromPending || isFirstResponseLoad) &&
+            !isFirst &&
+            changedFromPending &&
             row['hospital_id']?.toString() ==
                 widget.hospital['hospital_id']?.toString();
       }).toList();
@@ -147,6 +179,9 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
       if (!mounted || raw is! Map) return;
 
       final next = Map<String, dynamic>.from(raw);
+      final isFirst = _isFirstPoliceFetch;
+      _isFirstPoliceFetch = false;
+
       final wasAcknowledged = policeCoordination?['acknowledged'] == true;
       final isAcknowledged = next['acknowledged'] == true;
       final wasCleared = policeCoordination?['traffic_cleared'] == true;
@@ -154,19 +189,21 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
 
       setState(() => policeCoordination = next);
 
-      if (!wasAcknowledged && isAcknowledged) {
-        unawaited(AudioBuzzer.playAcknowledgeReceived());
-        _toast(
-          'Police acknowledged the ambulance alert.',
-          AppTheme.green,
-        );
-      }
-      if (!wasCleared && isCleared) {
-        unawaited(AudioBuzzer.playAcknowledgeReceived());
-        _toast(
-          'Police reported traffic cleared along the route.',
-          AppTheme.green,
-        );
+      if (!isFirst) {
+        if (!wasAcknowledged && isAcknowledged) {
+          unawaited(AudioBuzzer.playAcknowledgeReceived());
+          _toast(
+            'Police acknowledged the ambulance alert.',
+            AppTheme.green,
+          );
+        }
+        if (!wasCleared && isCleared) {
+          unawaited(AudioBuzzer.playAcknowledgeReceived());
+          _toast(
+            'Police reported traffic cleared along the route.',
+            AppTheme.green,
+          );
+        }
       }
     } catch (_) {}
   }
@@ -1211,40 +1248,35 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
                               const SizedBox(height: 10),
                               Builder(builder: (context) {
                                 final isHospitalAccepted = hospitalResponses.any((r) => r['status'] == 'ACCEPTED');
-                                final isHospitalAlerted = status == 'HOSPITAL_ALERTED' || hospitalResponses.isNotEmpty;
+                                final isHospitalDeclined = hospitalResponses.any((r) => r['status'] == 'DECLINED');
                                 final hospitalBtnLabel = isHospitalAccepted
                                     ? 'Hospital: Acknowledged'
-                                    : isHospitalAlerted
-                                        ? 'Hospital: Alert Sent'
-                                        : 'Inform Hospital';
+                                    : isHospitalDeclined
+                                        ? 'Hospital: Declined'
+                                        : 'Hospital: Sent';
                                 final hospitalBtnIcon = isHospitalAccepted
                                     ? Icons.check_circle_rounded
-                                    : isHospitalAlerted
-                                        ? Icons.hourglass_top_rounded
-                                        : Icons.local_hospital_rounded;
+                                    : isHospitalDeclined
+                                        ? Icons.cancel_rounded
+                                        : Icons.hourglass_top_rounded;
                                 final hospitalBtnColor = isHospitalAccepted
                                     ? AppTheme.green
-                                    : isHospitalAlerted
-                                        ? const Color(0xFFFF991F)
-                                        : AppTheme.green;
+                                    : isHospitalDeclined
+                                        ? AppTheme.red
+                                        : const Color(0xFFFF991F);
 
                                 final isTrafficCleared = policeCoordination?['traffic_cleared'] == true;
                                 final isPoliceAck = policeCoordination?['acknowledged'] == true;
-                                final isPoliceAlerted = policeCoordination != null;
                                 final policeBtnLabel = isTrafficCleared
                                     ? 'Police: Cleared'
                                     : isPoliceAck
                                         ? 'Police: Acknowledged'
-                                        : isPoliceAlerted
-                                            ? 'Police: Alert Sent'
-                                            : 'Inform Police';
+                                        : 'Police: Sent';
                                 final policeBtnIcon = isTrafficCleared
                                     ? Icons.verified_rounded
                                     : isPoliceAck
                                         ? Icons.local_police_rounded
-                                        : isPoliceAlerted
-                                            ? Icons.hourglass_top_rounded
-                                            : Icons.shield_rounded;
+                                        : Icons.hourglass_top_rounded;
                                 final policeBtnColor = isTrafficCleared
                                     ? AppTheme.green
                                     : isPoliceAck

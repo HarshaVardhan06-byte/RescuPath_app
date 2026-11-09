@@ -978,17 +978,21 @@ class _ForgotCredentialsSheet extends StatefulWidget {
 
 class _ForgotCredentialsSheetState extends State<_ForgotCredentialsSheet> {
   int tabIndex = 0; // 0 = Forgot GST ID, 1 = Forgot Password
+  int pwdStep = 1; // 1 = Send OTP, 2 = Verify OTP & Reset Password
 
   final TextEditingController emailOrPhone = TextEditingController();
   final TextEditingController resetGst = TextEditingController();
   final TextEditingController resetAdminEmail = TextEditingController();
+  final TextEditingController resetOtp = TextEditingController();
   final TextEditingController newPassword = TextEditingController();
+  final TextEditingController confirmPassword = TextEditingController();
 
   bool loading = false;
   String? modalError;
   String? modalSuccess;
   String? foundGst;
   String? foundHospitalName;
+  bool obscure = true;
 
   Future<void> _recoverGst() async {
     final ident = emailOrPhone.text.trim();
@@ -1025,13 +1029,66 @@ class _ForgotCredentialsSheetState extends State<_ForgotCredentialsSheet> {
     }
   }
 
-  Future<void> _resetPassword() async {
-    final gst = resetGst.text.trim().toUpperCase();
-    final email = resetAdminEmail.text.trim();
-    final pwd = newPassword.text;
+  Future<void> _sendHospitalOtp() async {
+    final ident = resetAdminEmail.text.trim();
+    if (ident.isEmpty) {
+      setState(() => modalError = 'Enter the registered administrator Gmail or hospital GST number.');
+      return;
+    }
 
-    if (gst.isEmpty || email.isEmpty || pwd.isEmpty) {
-      setState(() => modalError = 'Fill in GST number, Admin Email, and your new password.');
+    setState(() {
+      loading = true;
+      modalError = null;
+      modalSuccess = null;
+    });
+
+    try {
+      final dynamic res = await widget.api.post('/coordination/hospital/forgot-credentials', {
+        'identifier': ident,
+        'request_type': 'FORGOT_PASSWORD',
+      });
+
+      if (res is Map && (res['status'] == 'otp_sent' || res['status'] == 'verified')) {
+        setState(() {
+          pwdStep = 2;
+          if (res['admin_email'] != null) {
+            resetAdminEmail.text = res['admin_email'].toString();
+          }
+          if (res['otp'] != null && resetOtp.text.isEmpty) {
+            resetOtp.text = res['otp'].toString();
+          }
+          modalSuccess = res['message']?.toString() ?? 'A 6-digit verification code has been sent to your Gmail.';
+        });
+      } else {
+        throw Exception(res['detail']?.toString() ?? 'Failed to send OTP.');
+      }
+    } catch (e) {
+      setState(() => modalError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      setState(() => loading = false);
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    final email = resetAdminEmail.text.trim();
+    final otp = resetOtp.text.trim();
+    final pwd = newPassword.text;
+    final confirm = confirmPassword.text;
+
+    if (email.isEmpty) {
+      setState(() => modalError = 'Enter the administrator Gmail.');
+      return;
+    }
+    if (otp.length < 4) {
+      setState(() => modalError = 'Enter the 6-digit verification code.');
+      return;
+    }
+    if (pwd.length < 6) {
+      setState(() => modalError = 'Password must be at least 6 characters.');
+      return;
+    }
+    if (pwd != confirm) {
+      setState(() => modalError = 'Passwords do not match.');
       return;
     }
 
@@ -1043,8 +1100,8 @@ class _ForgotCredentialsSheetState extends State<_ForgotCredentialsSheet> {
 
     try {
       final dynamic res = await widget.api.post('/coordination/hospital/reset-password', {
-        'gst_number': gst,
         'admin_email': email,
+        'otp': otp,
         'new_password': pwd,
       });
 
@@ -1185,34 +1242,100 @@ class _ForgotCredentialsSheetState extends State<_ForgotCredentialsSheet> {
                 ),
               ],
             ] else ...[
-              const Text(
-                'Enter your Hospital GST Number and the registered administrator Gmail to authorize resetting your emergency password:',
-                style: TextStyle(fontSize: 12, color: LuxuryTheme.muted),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: resetGst,
-                textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(labelText: 'Hospital GSTIN *', prefixIcon: Icon(Icons.badge_outlined)),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: resetAdminEmail,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Registered Admin Email *', prefixIcon: Icon(Icons.alternate_email)),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: newPassword,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'New Administrator Password *', prefixIcon: Icon(Icons.lock_outline)),
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: loading ? null : _resetPassword,
-                style: FilledButton.styleFrom(backgroundColor: LuxuryTheme.blue, minimumSize: const Size.fromHeight(48)),
-                child: Text(loading ? 'Updating Password…' : 'Verify Admin Email & Reset Password'),
-              ),
+              if (pwdStep == 1) ...[
+                const Text(
+                  'Enter your registered administrator Gmail or Hospital GSTIN. An automated verification code will be sent to your Gmail inbox:',
+                  style: TextStyle(fontSize: 12, color: LuxuryTheme.muted, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: resetAdminEmail,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Registered Admin Gmail or GSTIN *',
+                    hintText: 'admin@hospital.org or 29AA...',
+                    prefixIcon: Icon(Icons.alternate_email),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: loading ? null : _sendHospitalOtp,
+                  icon: loading
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.mark_email_read_outlined),
+                  style: FilledButton.styleFrom(backgroundColor: LuxuryTheme.blue, minimumSize: const Size.fromHeight(48)),
+                  label: Text(loading ? 'Sending Code to Gmail…' : 'Send Verification OTP to Gmail'),
+                ),
+              ] else ...[
+                Text(
+                  'Enter the 6-digit verification code sent to ${resetAdminEmail.text.trim()} and your new administrator password:',
+                  style: const TextStyle(fontSize: 12, color: LuxuryTheme.muted, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: resetOtp,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: const InputDecoration(
+                    labelText: '6-digit OTP code *',
+                    prefixIcon: Icon(Icons.pin_outlined),
+                    counterText: '',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: newPassword,
+                  obscureText: obscure,
+                  decoration: InputDecoration(
+                    labelText: 'New Administrator Password *',
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                      onPressed: () => setState(() => obscure = !obscure),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: confirmPassword,
+                  obscureText: obscure,
+                  decoration: const InputDecoration(
+                    labelText: 'Confirm New Password *',
+                    prefixIcon: Icon(Icons.lock_reset_outlined),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: loading ? null : _resetPassword,
+                  icon: loading
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.check_circle_rounded),
+                  style: FilledButton.styleFrom(backgroundColor: LuxuryTheme.green, minimumSize: const Size.fromHeight(48)),
+                  label: Text(loading ? 'Updating Password…' : 'Confirm & Reset Password'),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    TextButton.icon(
+                      onPressed: loading ? null : _sendHospitalOtp,
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: const Text('Resend code', style: TextStyle(fontSize: 12)),
+                    ),
+                    TextButton(
+                      onPressed: loading
+                          ? null
+                          : () => setState(() {
+                                pwdStep = 1;
+                                modalError = null;
+                                modalSuccess = null;
+                              }),
+                      child: const Text('Change email / GST', style: TextStyle(fontSize: 12)),
+                    ),
+                  ],
+                ),
+              ],
             ],
 
             if (modalError != null) ...[
@@ -1257,7 +1380,9 @@ class _ForgotCredentialsSheetState extends State<_ForgotCredentialsSheet> {
     emailOrPhone.dispose();
     resetGst.dispose();
     resetAdminEmail.dispose();
+    resetOtp.dispose();
     newPassword.dispose();
+    confirmPassword.dispose();
     super.dispose();
   }
 }
