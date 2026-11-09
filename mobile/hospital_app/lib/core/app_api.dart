@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -23,26 +24,49 @@ class AppApi {
   Future<void> saveToken(String value) => _storage.write(key: 'access_token', value: value);
   Future<void> logout() => _storage.delete(key: 'access_token');
 
+  Future<dynamic> _withRetry(Future<http.Response> Function() req) async {
+    try {
+      final response = await req().timeout(const Duration(seconds: 75));
+      return _decode(response);
+    } on TimeoutException {
+      try {
+        final response = await req().timeout(const Duration(seconds: 45));
+        return _decode(response);
+      } catch (_) {
+        throw Exception('Server is warming up or connection timed out. Please retry.');
+      }
+    } catch (e) {
+      if (e.toString().contains('TimeoutException')) {
+        throw Exception('Server connection timed out. Please retry.');
+      }
+      rethrow;
+    }
+  }
+
   Future<dynamic> get(String path) async {
-    final headers = await _headers();
-    final response = await http.get(Uri.parse('$baseUrl$path'), headers: headers).timeout(const Duration(seconds: 18));
-    return _decode(response);
+    return _withRetry(() async {
+      final headers = await _headers();
+      return http.get(Uri.parse('$baseUrl$path'), headers: headers);
+    });
   }
 
   Future<dynamic> post(String path, Map<String, dynamic> body) async {
-    final response = await http.post(Uri.parse('$baseUrl$path'), headers: await _headers(), body: jsonEncode(body)).timeout(const Duration(seconds: 18));
-    return _decode(response);
+    return _withRetry(() async {
+      return http.post(Uri.parse('$baseUrl$path'), headers: await _headers(), body: jsonEncode(body));
+    });
   }
 
   Future<dynamic> put(String path, Map<String, dynamic> body) async {
-    final response = await http.put(Uri.parse('$baseUrl$path'), headers: await _headers(), body: jsonEncode(body)).timeout(const Duration(seconds: 18));
-    return _decode(response);
+    return _withRetry(() async {
+      return http.put(Uri.parse('$baseUrl$path'), headers: await _headers(), body: jsonEncode(body));
+    });
   }
 
   Future<dynamic> delete(String path) async {
-    final headers = await _headers();
-    final response = await http.delete(Uri.parse('$baseUrl$path'), headers: headers).timeout(const Duration(seconds: 18));
-    return _decode(response);
+    return _withRetry(() async {
+      final headers = await _headers();
+      return http.delete(Uri.parse('$baseUrl$path'), headers: headers);
+    });
   }
 
   Future<Map<String, String>> _headers() async {

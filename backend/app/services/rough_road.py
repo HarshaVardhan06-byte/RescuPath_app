@@ -75,8 +75,8 @@ async def _fetch(
 ) -> list[dict[str, float]]:
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(
-            12.0,
-            connect=5.0,
+            3.0,
+            connect=2.0,
         ),
         headers={
             "User-Agent": (

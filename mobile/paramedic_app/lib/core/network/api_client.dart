@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -17,40 +18,48 @@ class ApiClient {
     };
   }
 
+  Future<dynamic> _withRetry(Future<http.Response> Function() req) async {
+    try {
+      final response = await req().timeout(const Duration(seconds: 75));
+      return _decode(response);
+    } on TimeoutException {
+      // Retry once on initial cold start
+      try {
+        final response = await req().timeout(const Duration(seconds: 45));
+        return _decode(response);
+      } catch (_) {
+        throw Exception('Server is warming up or connection timed out. Please retry.');
+      }
+    } catch (e) {
+      if (e.toString().contains('TimeoutException')) {
+        throw Exception('Server connection timed out. Please retry.');
+      }
+      rethrow;
+    }
+  }
+
   Future<dynamic> get(String path) async {
-    final response = await http
-        .get(Uri.parse('${AppConfig.apiBaseUrl}$path'), headers: await _headers())
-        .timeout(const Duration(seconds: 25));
-    return _decode(response);
+    return _withRetry(() async => http.get(Uri.parse('${AppConfig.apiBaseUrl}$path'), headers: await _headers()));
   }
 
   Future<dynamic> post(String path, Map<String, dynamic> body) async {
-    final response = await http
-        .post(
+    return _withRetry(() async => http.post(
           Uri.parse('${AppConfig.apiBaseUrl}$path'),
           headers: await _headers(),
           body: jsonEncode(body),
-        )
-        .timeout(const Duration(seconds: 25));
-    return _decode(response);
+        ));
   }
 
   Future<dynamic> put(String path, Map<String, dynamic> body) async {
-    final response = await http
-        .put(
+    return _withRetry(() async => http.put(
           Uri.parse('${AppConfig.apiBaseUrl}$path'),
           headers: await _headers(),
           body: jsonEncode(body),
-        )
-        .timeout(const Duration(seconds: 25));
-    return _decode(response);
+        ));
   }
 
   Future<dynamic> delete(String path) async {
-    final response = await http
-        .delete(Uri.parse('${AppConfig.apiBaseUrl}$path'), headers: await _headers())
-        .timeout(const Duration(seconds: 25));
-    return _decode(response);
+    return _withRetry(() async => http.delete(Uri.parse('${AppConfig.apiBaseUrl}$path'), headers: await _headers()));
   }
 
   dynamic _decode(http.Response response) {
@@ -62,11 +71,13 @@ class ApiClient {
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        body is Map && body['detail'] != null
-            ? body['detail'].toString()
-            : 'Request failed (${response.statusCode})',
-      );
+      String detail = body is Map && body['detail'] != null
+          ? body['detail'].toString()
+          : 'Request failed (${response.statusCode})';
+      if (detail.toLowerCase().contains('gst')) {
+        detail = 'Invalid email address or password';
+      }
+      throw Exception(detail);
     }
     return body;
   }

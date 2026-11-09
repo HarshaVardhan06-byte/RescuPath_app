@@ -44,12 +44,19 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
   String get hospitalName => widget.hospital['hospital_name']?.toString() ?? 'Selected Hospital';
   String? get hospitalPhone => widget.hospital['phone']?.toString();
   String get condition => (widget.hospital['condition']?.toString() ?? emergency?['condition']?.toString() ?? 'OTHER').toUpperCase();
+  String get _safeEmergencyId {
+    final wid = widget.emergencyId.trim();
+    if (wid.isNotEmpty && wid != 'null') return wid;
+    final emId = emergency?['id']?.toString().trim();
+    if (emId != null && emId.isNotEmpty && emId != 'null') return emId;
+    return 'active';
+  }
 
   @override void initState() { super.initState(); emergency = widget.assignedEmergency; status = widget.assignedEmergency?['status']?.toString() ?? 'HOSPITAL_ASSIGNED'; _setDestination(widget.assignedEmergency); _initialize(); }
 
   Future<void> _initialize() async {
     try {
-      final e = await api.get('/emergencies/${widget.emergencyId}');
+      final e = await api.get('/emergencies/${_safeEmergencyId}');
       if (mounted) setState(() { emergency = Map<String, dynamic>.from(e); status = e['status']?.toString() ?? status; _setDestination(e); });
       final highAccuracy = await UserPreferences.highAccuracyGps;
       try { final p = await location.currentPosition(highAccuracy: highAccuracy); await _handleLocation(p.latitude, p.longitude, p.accuracy, p.speed, p.heading); } catch (_) {}
@@ -70,11 +77,11 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
     if (lat is num && lng is num) destination = LatLng(lat.toDouble(), lng.toDouble());
   }
 
-  Future<void> _refreshEmergency() async { try { final e = await api.get('/emergencies/${widget.emergencyId}'); if (!mounted) return; setState(() { emergency = Map<String, dynamic>.from(e); status = e['status']?.toString() ?? status; _setDestination(e); }); } catch (_) {} }
+  Future<void> _refreshEmergency() async { try { final e = await api.get('/emergencies/${_safeEmergencyId}'); if (!mounted) return; setState(() { emergency = Map<String, dynamic>.from(e); status = e['status']?.toString() ?? status; _setDestination(e); }); } catch (_) {} }
 
   Future<void> _refreshHospitalResponses() async {
     try {
-      final raw = await api.get('/coordination/emergencies/${widget.emergencyId}/hospital-availability');
+      final raw = await api.get('/coordination/emergencies/${_safeEmergencyId}/hospital-availability');
       if (!mounted || raw is! List) return;
       final rows = raw.whereType<Map>().map((x) => Map<String, dynamic>.from(x)).toList();
       final isFirstResponseLoad = hospitalResponses.isEmpty;
@@ -113,7 +120,7 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
   Future<void> _refreshPoliceStatus() async {
     try {
       final raw = await api.get(
-        '/coordination/emergencies/${widget.emergencyId}/police-status',
+        '/coordination/emergencies/${_safeEmergencyId}/police-status',
       );
       if (!mounted || raw is! Map) return;
 
@@ -142,13 +149,13 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
 
   Future<void> _setEnRoute() async {
     if (status == 'EN_ROUTE' || status == 'HOSPITAL_ALERTED') return;
-    try { final result = await api.post('/emergencies/${widget.emergencyId}/status', {'status': 'EN_ROUTE'}); if (mounted) setState(() => status = result['status']?.toString() ?? 'EN_ROUTE'); } catch (_) {}
+    try { final result = await api.post('/emergencies/${_safeEmergencyId}/status', {'status': 'EN_ROUTE'}); if (mounted) setState(() => status = result['status']?.toString() ?? 'EN_ROUTE'); } catch (_) {}
   }
 
   Future<void> _refreshRoute() async {
     if (refreshing || !mounted) return;
     setState(() => refreshing = true);
-    try { final result = await api.get('/emergencies/${widget.emergencyId}/route'); if (!mounted) return; setState(() { route = Map<String, dynamic>.from(result as Map); _setDestination(route); }); }
+    try { final result = await api.get('/emergencies/${_safeEmergencyId}/route'); if (!mounted) return; setState(() { route = Map<String, dynamic>.from(result as Map); _setDestination(route); }); }
     catch (e) { if (mounted && route == null) setState(() => error = e.toString().replaceFirst('Exception: ', '')); }
     finally { if (mounted) setState(() => refreshing = false); }
   }
@@ -162,7 +169,7 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
     final point = LatLng(latitude, longitude);
     if (!mounted) return;
     setState(() { current = point; currentSpeedMps = speed; lastGpsUpdate = DateTime.now(); });
-    try { await api.post('/emergencies/${widget.emergencyId}/location', {'latitude': latitude, 'longitude': longitude, 'accuracy_meters': accuracy, 'speed_mps': speed, 'heading_degrees': heading, 'eta_seconds': route?['duration_seconds'] is num ? (route!['duration_seconds'] as num).round() : null}); } catch (_) {}
+    try { await api.post('/emergencies/${_safeEmergencyId}/location', {'latitude': latitude, 'longitude': longitude, 'accuracy_meters': accuracy, 'speed_mps': speed, 'heading_degrees': heading, 'eta_seconds': route?['duration_seconds'] is num ? (route!['duration_seconds'] as num).round() : null}); } catch (_) {}
     if (mounted) map.move(point, map.camera.zoom < 13 ? 15 : map.camera.zoom);
   }
 
@@ -176,15 +183,15 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
       final body = <String, dynamic>{
         'eta_seconds': raw is num ? raw.round() : null,
         'phone': hospitalPhone,
-        'note': 'Ambulance is en route to . Please confirm emergency department availability.',
+        'note': 'Ambulance is en route to $hospitalName. Please confirm emergency department availability.',
       };
       if (id != null && id.isNotEmpty) body['hospital_id'] = id;
       if (gst != null && gst.isNotEmpty) body['gst_number'] = gst;
 
-      await api.post('/emergencies//notify-hospital', body);
+      await api.post('/emergencies/${_safeEmergencyId}/notify-hospital', body);
       if (mounted) {
         setState(() => status = 'HOSPITAL_ALERTED');
-        _toast('Hospital informed • ETA . Waiting for their response.', AppTheme.green);
+        _toast('Hospital informed • ETA ${_etaText()}. Waiting for their response.', AppTheme.green);
         await _refreshHospitalResponses();
       }
     } catch (e) {
@@ -206,7 +213,7 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
     setState(() => informingPolice = true);
     try {
       final routeEta = route?['duration_seconds'];
-      final res = await api.post('/emergencies/${widget.emergencyId}/notify-police', {'eta_seconds': routeEta is num ? routeEta.round() : null});
+      final res = await api.post('/emergencies/${_safeEmergencyId}/notify-police', {'eta_seconds': routeEta is num ? routeEta.round() : null});
       await _refreshPoliceStatus();
       await _refreshHospitalResponses();
       if (mounted) {
@@ -387,7 +394,7 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
   }
 
   Future<void> _markArrived() async {
-    try { final result = await api.post('/emergencies/${widget.emergencyId}/status', {'status': 'ARRIVED'}); if (mounted) { setState(() => status = result['status']?.toString() ?? 'ARRIVED'); _toast('Arrival recorded. Ambulance marked available after arrival.', AppTheme.green); } }
+    try { final result = await api.post('/emergencies/${_safeEmergencyId}/status', {'status': 'ARRIVED'}); if (mounted) { setState(() => status = result['status']?.toString() ?? 'ARRIVED'); _toast('Arrival recorded. Ambulance marked available after arrival.', AppTheme.green); } }
     catch (e) { if (mounted) _toast(e.toString().replaceFirst('Exception: ', ''), AppTheme.red); }
   }
 

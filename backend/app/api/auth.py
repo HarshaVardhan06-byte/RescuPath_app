@@ -298,10 +298,18 @@ def login(
             is_valid_pwd = True
 
     if not user or not is_valid_pwd:
-        raise HTTPException(
-            401,
-            "Invalid email/GST number or password",
-        )
+        import re
+        is_gst = bool(re.match(r'^[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z]{1}[1-9A-Za-z]{1}[A-Za-z0-9]{2}$', identifier.strip()))
+        if is_gst:
+            raise HTTPException(
+                401,
+                "Invalid GST number or password",
+            )
+        else:
+            raise HTTPException(
+                401,
+                "Invalid email address or password",
+            )
 
     if not user.is_active:
         user.is_active = True
