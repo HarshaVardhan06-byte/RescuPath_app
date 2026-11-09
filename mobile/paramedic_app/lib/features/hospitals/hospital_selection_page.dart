@@ -77,7 +77,9 @@ class _HospitalSelectionPageState extends State<HospitalSelectionPage> {
         'gst_number': hospital['gst_number'],
       });
       if (!mounted) return;
-      await Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HospitalNavigationPage(emergencyId: widget.emergencyId, hospital: hospital, assignedEmergency: Map<String, dynamic>.from(assigned), initialSeverity: widget.initialSeverity)));
+      setState(() => selectingHospitalId = null);
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => HospitalNavigationPage(emergencyId: widget.emergencyId, hospital: hospital, assignedEmergency: Map<String, dynamic>.from(assigned), initialSeverity: widget.initialSeverity)));
+      if (mounted) setState(() => selectingHospitalId = null);
     } catch (e) {
       if (mounted) { setState(() => selectingHospitalId = null); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '')))); }
     }

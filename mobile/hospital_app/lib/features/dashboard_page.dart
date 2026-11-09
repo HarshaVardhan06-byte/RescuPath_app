@@ -30,6 +30,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
 
   Timer? pollTimer;
   Timer? routeTimer;
+  Timer? clockTimer;
   Map<String, dynamic> board = {};
   Map<String, dynamic>? routeData;
   String? selectedRequestId;
@@ -150,6 +151,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
     _load();
     pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _load());
     routeTimer = Timer.periodic(const Duration(seconds: 20), (_) => _loadRoute());
+    clockTimer = Timer.periodic(const Duration(seconds: 1), (_) { if (mounted) setState(() {}); });
   }
 
   Future<void> _load() async {
@@ -1713,6 +1715,50 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
     );
   }
 
+  Widget _buildLiveTimeBadge() {
+    final now = DateTime.now();
+    final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
+    final min = now.minute.toString().padLeft(2, '0');
+    final sec = now.second.toString().padLeft(2, '0');
+    final ampm = now.hour >= 12 ? 'PM' : 'AM';
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final dateStr = '${now.day.toString().padLeft(2, '0')} ${months[now.month - 1]} ${now.year}';
+    final timeStr = '$hour:$min:$sec $ampm';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F1E36),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF1E3A8A)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: const BoxDecoration(
+              color: Color(0xFF22C55E),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'LIVE  $timeStr • $dateStr',
+            style: const TextStyle(
+              color: Color(0xFFE2E8F0),
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w800,
+              fontSize: 11,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final h = hospital ?? {};
@@ -1777,6 +1823,8 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                       style:
                                           TextStyle(color: LuxuryTheme.green, fontWeight: FontWeight.w800, fontSize: 10))
                                 ])),
+                            const SizedBox(width: 10),
+                            _buildLiveTimeBadge(),
                             const SizedBox(width: 10),
                             // Executive Hospital Account Button
                             _buildHospitalAccountButton(),
@@ -1968,8 +2016,8 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                       children: [
                                         Text(
                                           _selectedHistoryIds.isEmpty
-                                              ? ' •  '
-                                              : ' of  selected',
+                                              ? '${requestsToDisplay.length} total • ${activeFilter == "HISTORY" ? "Archived History" : "Active Incoming"}'
+                                              : '${_selectedHistoryIds.length} of ${requestsToDisplay.length} selected',
                                           style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: LuxuryTheme.ink),
                                         ),
                                         const Spacer(),
@@ -1978,7 +2026,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                             FilledButton.icon(
                                               onPressed: _batchDeleteHistory,
                                               icon: const Icon(Icons.delete_forever_rounded, size: 15),
-                                              label: Text('Delete ()'),
+                                              label: Text('Delete (${_selectedHistoryIds.length})'),
                                               style: FilledButton.styleFrom(
                                                 backgroundColor: LuxuryTheme.red,
                                                 foregroundColor: Colors.white,
@@ -1991,7 +2039,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                             FilledButton.icon(
                                               onPressed: _batchArchiveActiveRequests,
                                               icon: const Icon(Icons.archive_outlined, size: 15),
-                                              label: Text('Archive ()'),
+                                              label: Text('Archive (${_selectedHistoryIds.length})'),
                                               style: FilledButton.styleFrom(
                                                 backgroundColor: LuxuryTheme.blue,
                                                 foregroundColor: Colors.white,
@@ -2011,7 +2059,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                                 .toSet();
                                             final isAllSelected = listIds.isNotEmpty && listIds.every(_selectedHistoryIds.contains);
                                             return Tooltip(
-                                              message: isAllSelected ? 'Deselect all' : 'Select all ()',
+                                              message: isAllSelected ? 'Deselect all' : 'Select all (${listIds.length})',
                                               child: InkWell(
                                                 borderRadius: BorderRadius.circular(99),
                                                 onTap: () {
@@ -2431,6 +2479,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
     _noticeEntry?.remove();
     pollTimer?.cancel();
     routeTimer?.cancel();
+    clockTimer?.cancel();
     _mapController.dispose();
     icu.dispose();
     erBeds.dispose();

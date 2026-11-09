@@ -23,6 +23,7 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
   Timer? routeTimer;
   Timer? junctionTimer;
   Timer? buzzerTimer;
+  Timer? clockTimer;
   StreamSubscription<Position>? locationSubscription;
 
   Map<String, dynamic> board = {};
@@ -134,6 +135,7 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
     pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _load());
     routeTimer = Timer.periodic(const Duration(seconds: 20), (_) => _loadRoute());
     junctionTimer = Timer.periodic(const Duration(minutes: 1), (_) => _loadNearbyJunctions(force: true));
+    clockTimer = Timer.periodic(const Duration(seconds: 1), (_) { if (mounted) setState(() {}); });
     _startLocation();
   }
 
@@ -904,6 +906,50 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
     );
   }
 
+  Widget _buildLiveTimeBadge() {
+    final now = DateTime.now();
+    final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
+    final min = now.minute.toString().padLeft(2, '0');
+    final sec = now.second.toString().padLeft(2, '0');
+    final ampm = now.hour >= 12 ? 'PM' : 'AM';
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final dateStr = '${now.day.toString().padLeft(2, '0')} ${months[now.month - 1]} ${now.year}';
+    final timeStr = '$hour:$min:$sec $ampm';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F1E36),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF1E3A8A)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(
+              color: onDuty ? LuxuryTheme.green : LuxuryTheme.amber,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'LIVE  $timeStr • $dateStr',
+            style: const TextStyle(
+              color: Color(0xFFE2E8F0),
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w800,
+              fontSize: 11,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = selected;
@@ -977,6 +1023,9 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                                   ],
                                 ),
                               ),
+                              const SizedBox(width: 10),
+                              _buildLiveTimeBadge(),
+                              const SizedBox(width: 10),
                               Switch(
                                 value: onDuty,
                                 onChanged: busy ? null : _toggleDuty,
@@ -1228,8 +1277,8 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                                           children: [
                                             Text(
                                               _selectedHistoryIds.isEmpty
-                                                  ? ' •  '
-                                                  : ' of  selected',
+                                                  ? '${list.length} total • ${activeFilter == "HISTORY" ? "Archived Dispatches" : "Active Alerts"}'
+                                                  : '${_selectedHistoryIds.length} of ${list.length} selected',
                                               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: LuxuryTheme.ink),
                                             ),
                                             const Spacer(),
@@ -1238,7 +1287,7 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                                                 FilledButton.icon(
                                                   onPressed: _batchDeleteHistory,
                                                   icon: const Icon(Icons.delete_forever_rounded, size: 15),
-                                                  label: Text('Delete ()'),
+                                                  label: Text('Delete (${_selectedHistoryIds.length})'),
                                                   style: FilledButton.styleFrom(
                                                     backgroundColor: LuxuryTheme.red,
                                                     foregroundColor: Colors.white,
@@ -1251,7 +1300,7 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                                                 FilledButton.icon(
                                                   onPressed: _batchArchiveActiveAlerts,
                                                   icon: const Icon(Icons.archive_outlined, size: 15),
-                                                  label: Text('Move to History ()'),
+                                                  label: Text('Move to History (${_selectedHistoryIds.length})'),
                                                   style: FilledButton.styleFrom(
                                                     backgroundColor: LuxuryTheme.blue,
                                                     foregroundColor: Colors.white,
@@ -1271,7 +1320,7 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                                                     .toSet();
                                                 final isAllSelected = listIds.isNotEmpty && listIds.every(_selectedHistoryIds.contains);
                                                 return Tooltip(
-                                                  message: isAllSelected ? 'Deselect all' : 'Select all ()',
+                                                  message: isAllSelected ? 'Deselect all' : 'Select all (${listIds.length})',
                                                   child: InkWell(
                                                     borderRadius: BorderRadius.circular(99),
                                                     onTap: () {
@@ -1691,6 +1740,7 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
     routeTimer?.cancel();
     junctionTimer?.cancel();
     buzzerTimer?.cancel();
+    clockTimer?.cancel();
     locationSubscription?.cancel();
     _mapController.dispose();
     super.dispose();

@@ -12,6 +12,7 @@ import '../../core/services/location_service.dart';
 import '../../core/services/user_preferences.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_widgets.dart';
+import '../hospitals/hospital_selection_page.dart';
 
 class HospitalNavigationPage extends StatefulWidget {
   final String emergencyId;
@@ -51,6 +52,23 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
     if (emId != null && emId.isNotEmpty && emId != 'null') return emId;
     return 'active';
   }
+
+  void _handleBack() {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => HospitalSelectionPage(
+            emergencyId: _safeEmergencyId,
+            initialSeverity: widget.initialSeverity,
+          ),
+        ),
+      );
+    }
+  }
+
 
   @override void initState() { super.initState(); emergency = widget.assignedEmergency; status = widget.assignedEmergency?['status']?.toString() ?? 'HOSPITAL_ASSIGNED'; _setDestination(widget.assignedEmergency); _initialize(); }
 
@@ -628,8 +646,8 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
                             children: [
                               _glassButton(
                                 Icons.arrow_back_rounded,
-                                () => Navigator.pop(context),
-                                'Back',
+                                _handleBack,
+                                'Back to hospital choices',
                               ),
                               const SizedBox(width: 9),
                               Expanded(

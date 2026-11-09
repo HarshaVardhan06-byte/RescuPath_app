@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/network/api_client.dart';
@@ -20,6 +21,59 @@ class _HomePageState extends State<HomePage> {
   int tab = 0;
   final api = ApiClient();
   Map<String, dynamic> summary = {};
+  Timer? _clockTimer;
+  Timer? _summaryTimer;
+
+  String get _greeting {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  Widget _buildLiveTimeBadge() {
+    final now = DateTime.now();
+    final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
+    final min = now.minute.toString().padLeft(2, '0');
+    final sec = now.second.toString().padLeft(2, '0');
+    final ampm = now.hour >= 12 ? 'PM' : 'AM';
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final dateStr = '${now.day.toString().padLeft(2, '0')} ${months[now.month - 1]} ${now.year}';
+    final timeStr = '$hour:$min:$sec $ampm';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F1E36),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF1E3A8A)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: const BoxDecoration(
+              color: Color(0xFF22C55E),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'LIVE  $timeStr • $dateStr',
+            style: const TextStyle(
+              color: Color(0xFFE2E8F0),
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w800,
+              fontSize: 10,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> load() async {
     try {
@@ -29,7 +83,21 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
-  void initState() { super.initState(); load(); }
+  void initState() {
+    super.initState();
+    load();
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+    _summaryTimer = Timer.periodic(const Duration(seconds: 10), (_) => load());
+  }
+
+  @override
+  void dispose() {
+    _clockTimer?.cancel();
+    _summaryTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,18 +136,26 @@ class _HomePageState extends State<HomePage> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
-                                      'READY FOR RESPONSE',
-                                      style: TextStyle(
-                                        color: AppTheme.blue,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 1.4,
-                                      ),
+                                    Wrap(
+                                      crossAxisAlignment: WrapCrossAlignment.center,
+                                      spacing: 8,
+                                      runSpacing: 4,
+                                      children: [
+                                        const Text(
+                                          'READY FOR RESPONSE',
+                                          style: TextStyle(
+                                            color: AppTheme.blue,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 1.4,
+                                          ),
+                                        ),
+                                        _buildLiveTimeBadge(),
+                                      ],
                                     ),
                                     const SizedBox(height: 5),
                                     Text(
-                                      'Good morning, ${summary['user_name'] ?? 'Paramedic'}',
+                                      '$_greeting, ${summary['user_name'] ?? 'Paramedic'}',
                                       style: const TextStyle(
                                         color: AppTheme.ink,
                                         fontSize: 27,
@@ -478,10 +554,24 @@ class _EmergencyListState extends State<_EmergencyList> {
     }
   }
 
+  Timer? _listClockTimer;
+  Timer? _listPollTimer;
+
   @override
   void initState() {
     super.initState();
     load();
+    _listClockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+    _listPollTimer = Timer.periodic(const Duration(seconds: 10), (_) => load());
+  }
+
+  @override
+  void dispose() {
+    _listClockTimer?.cancel();
+    _listPollTimer?.cancel();
+    super.dispose();
   }
 
   bool _isCompleted(Map<String, dynamic> e) {
@@ -546,7 +636,7 @@ class _EmergencyListState extends State<_EmergencyList> {
       _localHistoryIds.addAll(idsToArchive);
       _selectedHistoryIds.clear();
     });
-    _toast(' emergencies moved to History.', AppTheme.green);
+    _toast('${idsToArchive.length} emergencies moved to History.', AppTheme.green);
     await load();
   }
 
@@ -557,7 +647,7 @@ class _EmergencyListState extends State<_EmergencyList> {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete from Database & Cache?', style: TextStyle(fontWeight: FontWeight.w900)),
         content: Text(
-          'Permanently delete  emergency records from database and cache? This action cannot be undone.',
+          'Permanently delete ${idsToDelete.length} emergency records from database and cache? This action cannot be undone.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -579,7 +669,7 @@ class _EmergencyListState extends State<_EmergencyList> {
         items.removeWhere((e) => e is Map && idsToDelete.contains(e['id']?.toString()));
         _selectedHistoryIds.clear();
       });
-      _toast(' records permanently deleted from database and cache.', AppTheme.red);
+      _toast('${idsToDelete.length} records permanently deleted from database and cache.', AppTheme.red);
       await load();
     } catch (e) {
       for (final id in idsToDelete) {
@@ -708,7 +798,7 @@ class _EmergencyListState extends State<_EmergencyList> {
             Expanded(
               child: _buildHeroFilterCard(
                 title: 'ACTIVE',
-                count: '',
+                count: '${activeItems.length}',
                 icon: Icons.emergency_rounded,
                 color: AppTheme.red,
                 isSelected: emergencyFilter == 0,
@@ -719,7 +809,7 @@ class _EmergencyListState extends State<_EmergencyList> {
             Expanded(
               child: _buildHeroFilterCard(
                 title: 'HISTORY',
-                count: '',
+                count: '${historyItems.length}',
                 icon: Icons.history_rounded,
                 color: AppTheme.navy,
                 isSelected: emergencyFilter == 1,
@@ -778,8 +868,8 @@ class _EmergencyListState extends State<_EmergencyList> {
               children: [
                 Text(
                   _selectedHistoryIds.isEmpty
-                      ? ' • '
-                      : ' of  selected',
+                      ? '${displayedList.length} total • ${emergencyFilter == 0 ? "Active Responses" : "Completed History"}'
+                      : '${_selectedHistoryIds.length} of ${displayedList.length} selected',
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppTheme.ink),
                 ),
                 const Spacer(),
@@ -788,7 +878,7 @@ class _EmergencyListState extends State<_EmergencyList> {
                     FilledButton.icon(
                       onPressed: _batchArchiveActive,
                       icon: const Icon(Icons.archive_outlined, size: 15),
-                      label: Text('Move to History ()'),
+                      label: Text('Move to History (${_selectedHistoryIds.length})'),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppTheme.blue,
                         foregroundColor: Colors.white,
@@ -801,7 +891,7 @@ class _EmergencyListState extends State<_EmergencyList> {
                     FilledButton.icon(
                       onPressed: _batchDeleteHistory,
                       icon: const Icon(Icons.delete_forever_rounded, size: 15),
-                      label: Text('Delete ()'),
+                      label: Text('Delete (${_selectedHistoryIds.length})'),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppTheme.red,
                         foregroundColor: Colors.white,
@@ -821,7 +911,7 @@ class _EmergencyListState extends State<_EmergencyList> {
                     }).where((id) => id.isNotEmpty).toSet();
                     final isAllSelected = listIds.isNotEmpty && listIds.every(_selectedHistoryIds.contains);
                     return Tooltip(
-                      message: isAllSelected ? 'Deselect all' : 'Select all ()',
+                      message: isAllSelected ? 'Deselect all' : 'Select all (${listIds.length})',
                       child: InkWell(
                         borderRadius: BorderRadius.circular(99),
                         onTap: () {
