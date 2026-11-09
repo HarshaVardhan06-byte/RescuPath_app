@@ -124,14 +124,9 @@ class BottomNav extends StatelessWidget {
             label: 'Home',
           ),
           NavigationDestination(
-            icon: Icon(Icons.map_outlined),
-            selectedIcon: Icon(Icons.map),
-            label: 'Map',
-          ),
-          NavigationDestination(
             icon: Icon(Icons.emergency_outlined),
             selectedIcon: Icon(Icons.emergency),
-            label: 'Emergencies',
+            label: 'Emergency',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),

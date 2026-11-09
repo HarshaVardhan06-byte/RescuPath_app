@@ -66,6 +66,13 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
 
   List<Map<String, dynamic>> get allRequests => _list(board['requests']);
 
+  String get _greeting {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
   // Filtered requests based on activeFilter, timeFilter, and sortOrder
   List<Map<String, dynamic>> get displayedRequests {
     var list = allRequests.where((r) {
@@ -1792,7 +1799,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                             Expanded(
                                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, children: [
-                                Text('${h['hospital_name'] ?? 'Hospital Portal'}',
+                                Text('$_greeting, ${h['hospital_name'] ?? 'Hospital Portal'}',
                                     style: const TextStyle(
                                         color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 16)),
                                 if (h['gst_number'] != null)
@@ -1869,9 +1876,9 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               Row(
                                 children: [
-                                  const Expanded(
-                                    child: Text('Emergency Arrivals',
-                                        style: TextStyle(color: Colors.white, fontSize: 25, fontWeight: FontWeight.w900)),
+                                  Expanded(
+                                    child: Text('$_greeting • Emergency Arrivals',
+                                        style: const TextStyle(color: Colors.white, fontSize: 25, fontWeight: FontWeight.w900)),
                                   ),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -1885,7 +1892,10 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                 ],
                               ),
                               const SizedBox(height: 3),
-                              Text('Click any category below to inspect requests & history • ${h['hospital_name'] ?? 'Your facility'}',
+                              Text(
+                                  pendingCount == 0
+                                      ? '00 Pending Arrival Orders • $historyCount Records in History Archive • ${h['hospital_name'] ?? 'Your facility'}'
+                                      : '$pendingCount Pending Arrival Orders • $historyCount Records in History Archive • ${h['hospital_name'] ?? 'Your facility'}',
                                   style: TextStyle(color: Colors.white.withValues(alpha: .88), fontSize: 12)),
                               const SizedBox(height: 17),
                               LayoutBuilder(builder: (context, constraints) {
@@ -1896,7 +1906,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                     width: width,
                                     child: _filterCard(
                                       label: 'Pending',
-                                      count: '',
+                                      count: pendingCount > 0 ? pendingCount.toString().padLeft(2, '0') : '00',
                                       icon: Icons.pending_actions_rounded,
                                       color: LuxuryTheme.red,
                                       isSelected: activeFilter == 'PENDING',
@@ -1907,7 +1917,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                     width: width,
                                     child: _filterCard(
                                       label: 'Accepted',
-                                      count: '',
+                                      count: acceptedCount.toString().padLeft(2, '0'),
                                       icon: Icons.check_circle_rounded,
                                       color: LuxuryTheme.green,
                                       isSelected: activeFilter == 'ACCEPTED',
@@ -1918,7 +1928,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                     width: width,
                                     child: _filterCard(
                                       label: 'Declined',
-                                      count: '',
+                                      count: declinedCount.toString().padLeft(2, '0'),
                                       icon: Icons.cancel_rounded,
                                       color: LuxuryTheme.amber,
                                       isSelected: activeFilter == 'DECLINED',
@@ -1929,7 +1939,7 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                     width: width,
                                     child: _filterCard(
                                       label: 'History',
-                                      count: '',
+                                      count: historyCount.toString().padLeft(2, '0'),
                                       icon: Icons.history_rounded,
                                       color: LuxuryTheme.blue,
                                       isSelected: activeFilter == 'HISTORY',

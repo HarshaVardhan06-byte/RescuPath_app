@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/audio_buzzer.dart';
 import '../../core/config/app_config.dart';
 import '../../core/network/api_client.dart';
 import '../../core/services/location_service.dart';
@@ -130,6 +131,9 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
         final responseHospitalName = response['hospital_name']?.toString() ?? hospitalName;
         final responseNote = response['response_note']?.toString();
         final responseMessage = '$responseHospitalName ${accepted ? "accepted" : "declined"} the emergency arrival request${responseNote == null || responseNote.isEmpty ? "" : ": $responseNote"}';
+        if (accepted) {
+          unawaited(AudioBuzzer.playAcknowledgeReceived());
+        }
         _toast(responseMessage, accepted ? AppTheme.green : AppTheme.red);
       }
     } catch (_) {}
@@ -151,12 +155,14 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
       setState(() => policeCoordination = next);
 
       if (!wasAcknowledged && isAcknowledged) {
+        unawaited(AudioBuzzer.playAcknowledgeReceived());
         _toast(
           'Police acknowledged the ambulance alert.',
           AppTheme.green,
         );
       }
       if (!wasCleared && isCleared) {
+        unawaited(AudioBuzzer.playAcknowledgeReceived());
         _toast(
           'Police reported traffic cleared along the route.',
           AppTheme.green,
@@ -191,7 +197,12 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
     if (mounted) map.move(point, map.camera.zoom < 13 ? 15 : map.camera.zoom);
   }
 
-  Future<void> _informHospital() async {
+  Future<void> _informHospital({bool forceSend = false}) async {
+    final alreadyAlerted = status == 'HOSPITAL_ALERTED' || hospitalResponses.isNotEmpty;
+    if (alreadyAlerted && !forceSend) {
+      _showCoordinationSheet(focusHospital: true);
+      return;
+    }
     if (informingHospital) return;
     setState(() => informingHospital = true);
     try {
@@ -211,6 +222,7 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
         setState(() => status = 'HOSPITAL_ALERTED');
         _toast('Hospital informed • ETA ${_etaText()}. Waiting for their response.', AppTheme.green);
         await _refreshHospitalResponses();
+        _showCoordinationSheet(focusHospital: true);
       }
     } catch (e) {
       if (mounted) _toast(e.toString().replaceFirst('Exception: ', ''), AppTheme.red);
@@ -226,7 +238,12 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
     await launchUrl(Uri(scheme: 'tel', path: cleaned), mode: LaunchMode.externalApplication);
   }
 
-  Future<void> _informPolice() async {
+  Future<void> _informPolice({bool forceSend = false}) async {
+    final alreadyAlerted = policeCoordination != null;
+    if (alreadyAlerted && !forceSend) {
+      _showCoordinationSheet(focusPolice: true);
+      return;
+    }
     if (informingPolice) return;
     setState(() => informingPolice = true);
     try {
@@ -235,15 +252,18 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
       await _refreshPoliceStatus();
       await _refreshHospitalResponses();
       if (mounted) {
-        _toast('Police alerted for traffic clearance. Hospital acknowledged incoming response.', AppTheme.green);
-        _showCoordinationSheet(res is Map ? Map<String, dynamic>.from(res) : null);
+        _toast('Police alerted for traffic clearance.', AppTheme.green);
+        _showCoordinationSheet(
+          policeNotifyResult: res is Map ? Map<String, dynamic>.from(res) : null,
+          focusPolice: true,
+        );
       }
     }
     catch (e) { if (mounted) _toast(e.toString().replaceFirst('Exception: ', ''), AppTheme.red); }
     finally { if (mounted) setState(() => informingPolice = false); }
   }
 
-  void _showCoordinationSheet([Map<String, dynamic>? policeNotifyResult]) {
+  void _showCoordinationSheet({Map<String, dynamic>? policeNotifyResult, bool focusPolice = false, bool focusHospital = false}) {
     final remainingIcu = policeNotifyResult?['remaining_icu_beds'] ??
         policeCoordination?['remaining_icu_beds'] ??
         (hospitalResponses.isNotEmpty ? hospitalResponses.first['remaining_icu_beds'] : null) ??
@@ -257,6 +277,11 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
     final hName = policeNotifyResult?['hospital_name'] ?? policeCoordination?['hospital_name'] ?? hospitalName;
     final isPoliceAck = policeCoordination?['acknowledged'] == true;
     final isTrafficCleared = policeCoordination?['traffic_cleared'] == true;
+    final isPoliceAlerted = policeCoordination != null || policeNotifyResult != null;
+
+    final isHospitalAccepted = hospitalResponses.any((r) => r['status'] == 'ACCEPTED');
+    final isHospitalDeclined = hospitalResponses.any((r) => r['status'] == 'DECLINED');
+    final isHospitalAlerted = status == 'HOSPITAL_ALERTED' || hospitalResponses.isNotEmpty;
 
     showModalBottomSheet<void>(
       context: context,
@@ -286,23 +311,56 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
                 Container(
                   width: 44,
                   height: 44,
-                  decoration: BoxDecoration(color: AppTheme.green.withValues(alpha: .12), borderRadius: BorderRadius.circular(15)),
-                  child: const Icon(Icons.verified_rounded, color: AppTheme.green, size: 24),
+                  decoration: BoxDecoration(
+                    color: (isHospitalAccepted ? AppTheme.green : isHospitalAlerted ? const Color(0xFFFF991F) : AppTheme.blue).withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(
+                    isHospitalAccepted ? Icons.verified_rounded : isHospitalAlerted ? Icons.hourglass_top_rounded : Icons.local_hospital_rounded,
+                    color: isHospitalAccepted ? AppTheme.green : isHospitalAlerted ? const Color(0xFFFF991F) : AppTheme.blue,
+                    size: 24,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Hospital Acknowledged', style: TextStyle(color: AppTheme.ink, fontSize: 18, fontWeight: FontWeight.w900)),
+                      Text(
+                        isHospitalAccepted
+                            ? 'Hospital Acknowledged & Accepted'
+                            : isHospitalDeclined
+                                ? 'Hospital Intake Declined'
+                                : isHospitalAlerted
+                                    ? 'Hospital Alert Sent (Pending)'
+                                    : 'Hospital Status: Not Alerted',
+                        style: const TextStyle(color: AppTheme.ink, fontSize: 17, fontWeight: FontWeight.w900),
+                      ),
                       Text(hName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.muted, fontSize: 12, fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ),
-                const StatusChip('ACTIVE ESCORT', color: AppTheme.blue),
+                StatusChip(
+                  isHospitalAccepted
+                      ? 'ACCEPTED'
+                      : isHospitalDeclined
+                          ? 'DECLINED'
+                          : isHospitalAlerted
+                              ? 'SENT • PENDING'
+                              : 'NOT SENT',
+                  color: isHospitalAccepted
+                      ? AppTheme.green
+                      : isHospitalDeclined
+                          ? AppTheme.red
+                          : isHospitalAlerted
+                              ? const Color(0xFFFF991F)
+                              : AppTheme.muted,
+                ),
               ],
             ),
             const SizedBox(height: 16),
+
+            // Hospital Inventory & Readiness Card
             SurfaceCard(
               gradient: const [Color(0xFFEFF7FF), Color(0xFFFFFFFF)],
               child: Column(
@@ -351,11 +409,24 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
                   ),
                   const SizedBox(height: 9),
                   Row(
-                    children: const [
-                      Icon(Icons.check_circle_rounded, color: AppTheme.green, size: 16),
-                      SizedBox(width: 6),
+                    children: [
+                      Icon(
+                        isHospitalAccepted ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+                        color: isHospitalAccepted ? AppTheme.green : AppTheme.muted,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 6),
                       Expanded(
-                        child: Text('1 Dedicated ICU Bed and 1 O₂ Cylinder allocated for incoming patient.', style: TextStyle(color: AppTheme.green, fontSize: 11, fontWeight: FontWeight.w700)),
+                        child: Text(
+                          isHospitalAccepted
+                              ? '1 Dedicated ICU Bed and 1 O₂ Cylinder allocated for incoming patient.'
+                              : 'Hospital notification sent. Reservation will be confirmed upon facility acceptance.',
+                          style: TextStyle(
+                            color: isHospitalAccepted ? AppTheme.green : AppTheme.ink,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -363,27 +434,123 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
               ),
             ),
             const SizedBox(height: 12),
+
+            // Police Green Corridor Status Card
             SurfaceCard(
-              child: Row(
+              gradient: isTrafficCleared
+                  ? const [Color(0xFFF0FDF4), Color(0xFFFFFFFF)]
+                  : isPoliceAck
+                      ? const [Color(0xFFEFF6FF), Color(0xFFFFFFFF)]
+                      : const [Color(0xFFFFFBEB), Color(0xFFFFFFFF)],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(color: const Color(0xFFFF991F).withValues(alpha: .12), borderRadius: BorderRadius.circular(12)),
-                    child: const Icon(Icons.local_police_rounded, color: Color(0xFFFF991F), size: 22),
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: (isTrafficCleared
+                                  ? AppTheme.green
+                                  : isPoliceAck
+                                      ? AppTheme.blue
+                                      : const Color(0xFFFF991F))
+                              .withValues(alpha: .12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          isTrafficCleared
+                              ? Icons.verified_rounded
+                              : isPoliceAck
+                                  ? Icons.local_police_rounded
+                                  : Icons.hourglass_top_rounded,
+                          color: isTrafficCleared
+                              ? AppTheme.green
+                              : isPoliceAck
+                                  ? AppTheme.blue
+                                  : const Color(0xFFFF991F),
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isTrafficCleared
+                                  ? 'Police: Route Cleared (Green Corridor)'
+                                  : isPoliceAck
+                                      ? 'Police: Acknowledged & Escorting'
+                                      : isPoliceAlerted
+                                          ? 'Police: Alert Dispatched (Pending)'
+                                          : 'Police: Not Dispatched',
+                              style: const TextStyle(color: AppTheme.ink, fontWeight: FontWeight.w900, fontSize: 13),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              isTrafficCleared
+                                  ? 'Traffic signals and intermediate junctions cleared by police units.'
+                                  : isPoliceAck
+                                      ? 'Duty officer acknowledged alert. Patrol units clearing route junctions.'
+                                      : isPoliceAlerted
+                                          ? 'Traffic clearance alert dispatched to police control. Waiting for acknowledgment.'
+                                          : 'Tap Inform Police to dispatch green corridor alert.',
+                              style: const TextStyle(color: AppTheme.muted, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      StatusChip(
+                        isTrafficCleared
+                            ? 'CLEARED'
+                            : isPoliceAck
+                                ? 'ESCORT'
+                                : isPoliceAlerted
+                                    ? 'SENT'
+                                    : 'NOT SENT',
+                        color: isTrafficCleared
+                            ? AppTheme.green
+                            : isPoliceAck
+                                ? AppTheme.blue
+                                : const Color(0xFFFF991F),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Police Green Corridor', style: TextStyle(color: AppTheme.ink, fontWeight: FontWeight.w900, fontSize: 13)),
-                        const SizedBox(height: 2),
-                        Text(isTrafficCleared ? 'Route traffic cleared by police escort' : isPoliceAck ? 'Police acknowledged & clearing route junctions' : 'Traffic clearance alert dispatched to police control', style: const TextStyle(color: AppTheme.muted, fontSize: 11)),
-                      ],
-                    ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _call112();
+                          },
+                          icon: const Icon(Icons.phone_in_talk_rounded, size: 16),
+                          label: const Text('Call 112 Desk', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _informPolice(forceSend: true);
+                          },
+                          icon: const Icon(Icons.refresh_rounded, size: 16),
+                          label: Text(
+                            isPoliceAlerted ? 'Re-send Police Alert' : 'Alert Police Now',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFFF991F),
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  StatusChip(isTrafficCleared ? 'CLEARED' : isPoliceAck ? 'ESCORT' : 'ALERTED', color: isTrafficCleared ? AppTheme.green : const Color(0xFFFF991F)),
                 ],
               ),
             ),
@@ -412,7 +579,18 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
   }
 
   Future<void> _markArrived() async {
-    try { final result = await api.post('/emergencies/${_safeEmergencyId}/status', {'status': 'ARRIVED'}); if (mounted) { setState(() => status = result['status']?.toString() ?? 'ARRIVED'); _toast('Arrival recorded. Ambulance marked available after arrival.', AppTheme.green); } }
+    try {
+      final result = await api.post('/emergencies/${_safeEmergencyId}/status', {'status': 'ARRIVED'});
+      if (mounted) {
+        setState(() => status = result['status']?.toString() ?? 'ARRIVED');
+        _toast('Arrival recorded. Ambulance marked available.', AppTheme.green);
+        Future.delayed(const Duration(milliseconds: 700), () {
+          if (mounted) {
+            Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+          }
+        });
+      }
+    }
     catch (e) { if (mounted) _toast(e.toString().replaceFirst('Exception: ', ''), AppTheme.red); }
   }
 
@@ -1031,40 +1209,74 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
                                 ],
                               ),
                               const SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _action(
-                                      Icons.local_hospital_rounded,
-                                      'Inform Hospital',
-                                      AppTheme.green,
-                                      informingHospital
-                                          ? null
-                                          : _informHospital,
+                              Builder(builder: (context) {
+                                final isHospitalAccepted = hospitalResponses.any((r) => r['status'] == 'ACCEPTED');
+                                final isHospitalAlerted = status == 'HOSPITAL_ALERTED' || hospitalResponses.isNotEmpty;
+                                final hospitalBtnLabel = isHospitalAccepted
+                                    ? 'Hospital: Acknowledged'
+                                    : isHospitalAlerted
+                                        ? 'Hospital: Alert Sent'
+                                        : 'Inform Hospital';
+                                final hospitalBtnIcon = isHospitalAccepted
+                                    ? Icons.check_circle_rounded
+                                    : isHospitalAlerted
+                                        ? Icons.hourglass_top_rounded
+                                        : Icons.local_hospital_rounded;
+                                final hospitalBtnColor = isHospitalAccepted
+                                    ? AppTheme.green
+                                    : isHospitalAlerted
+                                        ? const Color(0xFFFF991F)
+                                        : AppTheme.green;
+
+                                final isTrafficCleared = policeCoordination?['traffic_cleared'] == true;
+                                final isPoliceAck = policeCoordination?['acknowledged'] == true;
+                                final isPoliceAlerted = policeCoordination != null;
+                                final policeBtnLabel = isTrafficCleared
+                                    ? 'Police: Cleared'
+                                    : isPoliceAck
+                                        ? 'Police: Acknowledged'
+                                        : isPoliceAlerted
+                                            ? 'Police: Alert Sent'
+                                            : 'Inform Police';
+                                final policeBtnIcon = isTrafficCleared
+                                    ? Icons.verified_rounded
+                                    : isPoliceAck
+                                        ? Icons.local_police_rounded
+                                        : isPoliceAlerted
+                                            ? Icons.hourglass_top_rounded
+                                            : Icons.shield_rounded;
+                                final policeBtnColor = isTrafficCleared
+                                    ? AppTheme.green
+                                    : isPoliceAck
+                                        ? AppTheme.blue
+                                        : const Color(0xFFFF991F);
+
+                                return Row(
+                                  children: [
+                                    Expanded(
+                                      child: _action(
+                                        hospitalBtnIcon,
+                                        hospitalBtnLabel,
+                                        hospitalBtnColor,
+                                        informingHospital
+                                            ? null
+                                            : () => _informHospital(),
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: _action(
-                                      Icons.phone_rounded,
-                                      'Call Hospital',
-                                      AppTheme.blue,
-                                      _callHospital,
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: _action(
+                                        policeBtnIcon,
+                                        policeBtnLabel,
+                                        policeBtnColor,
+                                        informingPolice
+                                            ? null
+                                            : () => _informPolice(),
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: _action(
-                                      Icons.shield_rounded,
-                                      'Inform Police',
-                                      const Color(0xFFFF991F),
-                                      informingPolice
-                                          ? null
-                                          : _informPolice,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                  ],
+                                );
+                              }),
                               const SizedBox(height: 8),
                               Row(
                                 children: [

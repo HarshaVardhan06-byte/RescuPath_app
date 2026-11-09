@@ -4,11 +4,8 @@ import 'package:flutter/material.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_widgets.dart';
-import '../ambulance/ambulance_page.dart';
 import '../emergency/create_emergency_page.dart';
 import '../emergency/active_emergency_page.dart';
-import '../hospitals/nearby_hospitals_page.dart';
-import '../map/live_location_page.dart';
 import '../profile/profile_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -103,7 +100,6 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final pages = [
       _home(),
-      const LiveLocationPage(),
       const _EmergencyList(),
       const ProfilePage(),
     ];
@@ -117,16 +113,15 @@ class _HomePageState extends State<HomePage> {
         onRefresh: load,
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final narrow = constraints.maxWidth < 700;
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(vertical: 18),
+              padding: const EdgeInsets.symmetric(vertical: 20),
               children: [
                 Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1120),
+                    constraints: const BoxConstraints(maxWidth: 820),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -153,7 +148,7 @@ class _HomePageState extends State<HomePage> {
                                         _buildLiveTimeBadge(),
                                       ],
                                     ),
-                                    const SizedBox(height: 5),
+                                    const SizedBox(height: 6),
                                     Text(
                                       '$_greeting, ${summary['user_name'] ?? 'Paramedic'}',
                                       style: const TextStyle(
@@ -162,6 +157,11 @@ class _HomePageState extends State<HomePage> {
                                         fontWeight: FontWeight.w900,
                                         height: 1.1,
                                       ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    const StatusChip(
+                                      'ON DUTY • DISPATCH UNIT ACTIVE',
+                                      color: AppTheme.green,
                                     ),
                                   ],
                                 ),
@@ -176,280 +176,185 @@ class _HomePageState extends State<HomePage> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 48),
 
-                          // Premium dark hero banner.
-                          SurfaceCard(
-                            padding: EdgeInsets.zero,
-                            radius: 28,
-                            gradient: const [AppTheme.navy, AppTheme.navy2],
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(28),
-                              child: Stack(
-                                children: [
-                                  Positioned(
-                                    right: -5,
-                                    bottom: 0,
-                                    child: IgnorePointer(
-                                      child: Opacity(
-                                        opacity: .96,
-                                        child: SizedBox(
-                                          width: narrow ? 145 : 310,
-                                          height: narrow ? 132 : 192,
-                                          child: Image.asset(
-                                            'assets/ambulance_hero.png',
-                                            fit: BoxFit.cover,
-                                            alignment: Alignment.centerRight,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: EdgeInsets.fromLTRB(
-                                      22,
-                                      22,
-                                      narrow ? 130 : 270,
-                                      24,
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const StatusChip(
-                                          'ON DUTY',
-                                          color: AppTheme.green,
-                                        ),
-                                        const SizedBox(height: 16),
-                                        Text(
-                                          'Move faster.\nCoordinate smarter.',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: narrow ? 22 : 29,
-                                            fontWeight: FontWeight.w900,
-                                            height: 1.03,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 9),
-                                        const Text(
-                                          'Live GPS, hospital matching and emergency communications in one place.',
-                                          style: TextStyle(
-                                            color: Color(0xD9FFFFFF),
-                                            fontSize: 12,
-                                            height: 1.4,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // One clear entry point to the active response list.
-                          SurfaceCard(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 15,
-                            ),
-                            radius: 24,
-                            gradient: const [
-                              Color(0xFFFFEEF0),
-                              Color(0xFFFFF7F8),
-                            ],
-                            onTap: () => setState(() => tab = 2),
-                            child: Row(
+                          // Large prominent round circle button: Create an Emergency / SOS
+                          Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Container(
-                                  width: 48,
-                                  height: 48,
+                                  padding: const EdgeInsets.all(14),
                                   decoration: BoxDecoration(
-                                    color:
-                                        AppTheme.red.withValues(alpha: .12),
-                                    borderRadius: BorderRadius.circular(16),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: const Color(0xFFDC2626).withValues(alpha: .28),
+                                      width: 3.0,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFFDC2626).withValues(alpha: .14),
+                                        blurRadius: 48,
+                                        spreadRadius: 8,
+                                      ),
+                                    ],
                                   ),
-                                  child: const Icon(
-                                    Icons.emergency_rounded,
-                                    color: AppTheme.red,
-                                    size: 26,
-                                  ),
-                                ),
-                                const SizedBox(width: 13),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        'Active emergencies',
-                                        style: TextStyle(
-                                          color: AppTheme.ink,
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 16,
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    shape: const CircleBorder(),
+                                    child: InkWell(
+                                      onTap: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => const CreateEmergencyPage(),
                                         ),
                                       ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        '${summary['active_emergencies'] ?? 0} active • Tap to manage response',
-                                        style: const TextStyle(
-                                          color: AppTheme.muted,
+                                      customBorder: const CircleBorder(),
+                                      splashColor: Colors.white.withValues(alpha: .28),
+                                      highlightColor: Colors.white.withValues(alpha: .18),
+                                      child: Ink(
+                                        width: 250,
+                                        height: 250,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          gradient: const LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: [
+                                              Color(0xFFEF4444),
+                                              Color(0xFFDC2626),
+                                              Color(0xFF991B1B),
+                                            ],
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: const Color(0xFFDC2626).withValues(alpha: .48),
+                                              blurRadius: 32,
+                                              offset: const Offset(0, 12),
+                                            ),
+                                            BoxShadow(
+                                              color: const Color(0xFFDC2626).withValues(alpha: .24),
+                                              blurRadius: 64,
+                                              spreadRadius: 6,
+                                            ),
+                                          ],
+                                        ),
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(
+                                              Icons.emergency_rounded,
+                                              size: 58,
+                                              color: Colors.white,
+                                            ),
+                                            const SizedBox(height: 10),
+                                            // Highlighted pill badge
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius: BorderRadius.circular(22),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                    color: Color(0x33000000),
+                                                    blurRadius: 8,
+                                                    offset: Offset(0, 3),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: const Text(
+                                                'CREATE AN EMERGENCY',
+                                                style: TextStyle(
+                                                  color: Color(0xFFDC2626),
+                                                  fontWeight: FontWeight.w900,
+                                                  fontSize: 12,
+                                                  letterSpacing: 1.3,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            const Text(
+                                              'CREATE SOS',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w900,
+                                                fontSize: 22,
+                                                letterSpacing: 2.0,
+                                                shadows: [
+                                                  Shadow(
+                                                    color: Color(0x66000000),
+                                                    blurRadius: 4,
+                                                    offset: Offset(0, 1),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            const SizedBox(height: 5),
+                                            Text(
+                                              'Tap to dispatch incident',
+                                              style: TextStyle(
+                                                color: Colors.white.withValues(alpha: .88),
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 36),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0x0A000000),
+                                        blurRadius: 8,
+                                        offset: Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: const BoxDecoration(
+                                          color: AppTheme.green,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Text(
+                                        'GPS Live • Hospital Network Online • Police Relay Active',
+                                        style: TextStyle(
+                                          color: AppTheme.ink,
                                           fontSize: 11,
+                                          fontWeight: FontWeight.w700,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                                const Icon(
-                                  Icons.chevron_right_rounded,
-                                  size: 21,
-                                  color: AppTheme.ink,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 22),
-                          const Text(
-                            'QUICK ACTIONS',
-                            style: TextStyle(
-                              color: AppTheme.ink,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.1,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 11),
-
-                          // Compact cards avoid the tall, empty tiles on desktop.
-                          LayoutBuilder(
-                            builder: (context, gridConstraints) {
-                              final columns =
-                                  gridConstraints.maxWidth >= 620 ? 2 : 1;
-                              return GridView(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                gridDelegate:
-                                    SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: columns,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                  childAspectRatio:
-                                      columns == 2 ? 3.15 : 4.4,
-                                ),
-                                children: [
-                                  _quickAction(
-                                    icon: Icons.emergency_rounded,
-                                    title: 'New emergency',
-                                    subtitle: 'Report an incident',
-                                    color: AppTheme.red,
-                                    onTap: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            const CreateEmergencyPage(),
-                                      ),
-                                    ),
-                                  ),
-                                  _quickAction(
-                                    icon: Icons.local_shipping_rounded,
-                                    title: 'My ambulance',
-                                    subtitle: 'Vehicle and duty status',
-                                    color: AppTheme.blue,
-                                    onTap: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => const AmbulancePage(),
-                                      ),
-                                    ),
-                                  ),
-                                  _quickAction(
-                                    icon: Icons.navigation_rounded,
-                                    title: 'Live GPS',
-                                    subtitle: 'Track the current unit',
-                                    color: AppTheme.green,
-                                    onTap: () => setState(() => tab = 1),
-                                  ),
-                                  _quickAction(
-                                    icon: Icons.local_hospital_rounded,
-                                    title: 'Find hospitals',
-                                    subtitle: 'Nearby facilities and routes',
-                                    color: AppTheme.purple,
-                                    onTap: () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            const NearbyHospitalsPage(),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 20),
-
-                          // Live summary metrics remain connected to the dashboard API.
-                          SurfaceCard(
-                            radius: 24,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        'Today at a glance',
-                                        style: TextStyle(
-                                          color: AppTheme.ink,
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ),
-                                    Icon(
-                                      Icons.insights_rounded,
-                                      color: AppTheme.blue,
-                                    ),
-                                  ],
-                                ),
                                 const SizedBox(height: 14),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: MetricCard(
-                                        icon: Icons.bolt_rounded,
-                                        value:
-                                            '${summary['total_responses'] ?? 0}',
-                                        label: 'Responses',
-                                        color: AppTheme.blue,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: MetricCard(
-                                        icon: Icons.emergency_rounded,
-                                        value:
-                                            '${summary['active_emergencies'] ?? 0}',
-                                        label: 'Active',
-                                        color: AppTheme.red,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: MetricCard(
-                                        icon: Icons.pending_actions_rounded,
-                                        value: '${summary['pending'] ?? 0}',
-                                        label: 'Pending',
-                                        color: AppTheme.amber,
-                                      ),
-                                    ),
-                                  ],
+                                Text(
+                                  'Tap the Emergency tab below at any time to view active responses & history',
+                                  style: TextStyle(
+                                    color: AppTheme.muted.withValues(alpha: .85),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 22),
+                          const SizedBox(height: 40),
                         ],
                       ),
                     ),
@@ -460,68 +365,6 @@ class _HomePageState extends State<HomePage> {
           },
         ),
       );
-
-  Widget _quickAction({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return SurfaceCard(
-      radius: 22,
-      padding: const EdgeInsets.all(14),
-      onTap: onTap,
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: .11),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppTheme.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppTheme.muted,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Icon(
-            Icons.arrow_forward_ios_rounded,
-            size: 14,
-            color: AppTheme.muted,
-          ),
-        ],
-      ),
-    );
-  }
-
 }
 
 class _EmergencyList extends StatefulWidget {

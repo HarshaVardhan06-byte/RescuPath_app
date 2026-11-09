@@ -60,6 +60,13 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
   Map<String, dynamic>? get officer =>
       board['officer'] is Map ? Map<String, dynamic>.from(board['officer']) : null;
 
+  String get _greeting {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
   List<Map<String, dynamic>> get allAlerts =>
       _list(board['alerts']).where((a) => !_dismissedEmergencyIds.contains(a['emergency_id']?.toString() ?? '')).toList();
 
@@ -988,9 +995,9 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
-                                      'RescuPath Police',
-                                      style: TextStyle(color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 17),
+                                    Text(
+                                      '$_greeting, ${off['name'] ?? 'Police Command'}',
+                                      style: const TextStyle(color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 17),
                                     ),
                                     Text(
                                       '${off['station_name'] ?? 'Police Command'} • ${off['junction_name'] ?? 'Junction not assigned'}',
@@ -1101,13 +1108,13 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                                     children: [
                                       Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: const [
+                                        children: [
                                           Text(
-                                            'Ambulance Corridor Command',
-                                            style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900),
+                                            '$_greeting • Corridor Command',
+                                            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900),
                                           ),
-                                          SizedBox(height: 4),
-                                          Text(
+                                          const SizedBox(height: 4),
+                                          const Text(
                                             'Clear traffic corridors. Save emergency response lives.',
                                             style: TextStyle(color: Color(0xCCFFFFFF), fontSize: 12),
                                           ),
