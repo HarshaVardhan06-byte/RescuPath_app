@@ -22,7 +22,7 @@ from app.schemas.emergency import (
     StatusUpdateRequest,
 )
 from app.services.events import record_event
-from app.services.hospital_selection import find_candidates, get_emergency_condition, normalize_condition
+from app.services.hospital_selection import find_candidates, get_emergency_condition, normalize_condition, haversine_km
 from app.services.rough_road import get_rough_road_points
 from app.services.routing import get_routing_provider, route_points
 
@@ -290,6 +290,16 @@ def assign_hospital(data: AssignHospitalRequest, emergency_id: str = "active", d
     condition = get_emergency_condition(db, emergency.id)
     emergency.status = "HOSPITAL_ALERTED"
 
+    # Calculate calibrated ETA from current ambulance position to hospital
+    eta_seconds = 600
+    if live_lat is not None and live_lng is not None and hospital.latitude is not None and hospital.longitude is not None:
+        try:
+            dist_km = haversine_km(float(live_lat), float(live_lng), float(hospital.latitude), float(hospital.longitude))
+            road_km = round(dist_km * 1.30, 2)
+            eta_seconds = max(180, int((road_km / 35.0) * 3600))
+        except Exception:
+            eta_seconds = 600
+
     avail_req = db.scalar(
         select(HospitalAvailabilityRequest).where(
             HospitalAvailabilityRequest.emergency_id == emergency.id,
@@ -302,7 +312,7 @@ def assign_hospital(data: AssignHospitalRequest, emergency_id: str = "active", d
             hospital_id=hospital.id,
             requested_by=current_user.id,
             status="REQUESTED",
-            requested_eta_seconds=emergency.estimated_duration_seconds or 600,
+            requested_eta_seconds=eta_seconds,
             ambulance_latitude=live_lat,
             ambulance_longitude=live_lng,
             message=f"Ambulance en route to {hospital.name}. Bed and emergency intake requested.",
@@ -310,7 +320,7 @@ def assign_hospital(data: AssignHospitalRequest, emergency_id: str = "active", d
         db.add(avail_req)
         db.flush()
     elif avail_req.status == "REQUESTED":
-        avail_req.requested_eta_seconds = emergency.estimated_duration_seconds or 600
+        avail_req.requested_eta_seconds = eta_seconds
         avail_req.ambulance_latitude = live_lat
         avail_req.ambulance_longitude = live_lng
 
@@ -351,7 +361,7 @@ def assign_hospital(data: AssignHospitalRequest, emergency_id: str = "active", d
         "ambulance_longitude": live_lng,
         "destination_latitude": hospital.latitude,
         "destination_longitude": hospital.longitude,
-        "eta_seconds": emergency.estimated_duration_seconds or 600,
+        "eta_seconds": eta_seconds,
         "eta_basis": "hospital route assignment",
         "message": f"Ambulance en route to {hospital.name}. Please prepare junction traffic clearance.",
         "sent_by": str(current_user.id),
