@@ -1787,77 +1787,176 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Header Bar
-                          Row(children: [
-                            Container(
-                                width: 46,
-                                height: 46,
-                                decoration:
-                                    BoxDecoration(color: LuxuryTheme.blue, borderRadius: BorderRadius.circular(15)),
-                                child: const Icon(Icons.local_hospital_rounded, color: Colors.white, size: 25)),
-                            const SizedBox(width: 11),
-                            Expanded(
-                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, children: [
-                                Text('$_greeting, ${h['hospital_name'] ?? 'Hospital Portal'}',
-                                    style: const TextStyle(
-                                        color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 16)),
-                                if (h['gst_number'] != null)
+                          // Header Bar (Responsive for Mobile & Desktop)
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final isMobile = constraints.maxWidth < 720;
+                              if (isMobile) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          width: 42,
+                                          height: 42,
+                                          decoration: BoxDecoration(
+                                            color: LuxuryTheme.blue,
+                                            borderRadius: BorderRadius.circular(13),
+                                          ),
+                                          child: const Icon(Icons.local_hospital_rounded, color: Colors.white, size: 22),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                '$_greeting, ${h['hospital_name'] ?? 'Hospital Portal'}',
+                                                style: const TextStyle(color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 16),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              Text(
+                                                '${h['department'] ?? 'Emergency Department'} • Verified Facility Command',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(color: LuxuryTheme.muted, fontSize: 11),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        _buildHospitalAccountButton(),
+                                        IconButton(
+                                          tooltip: 'Sign out',
+                                          icon: const Icon(Icons.logout_rounded, color: LuxuryTheme.ink, size: 22),
+                                          onPressed: _confirmSignOut,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      children: [
+                                        _buildLiveTimeBadge(),
+                                        const Spacer(),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                          decoration: BoxDecoration(
+                                            color: LuxuryTheme.green.withValues(alpha: .10),
+                                            borderRadius: BorderRadius.circular(99),
+                                          ),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.circle, color: LuxuryTheme.green, size: 8),
+                                              SizedBox(width: 5),
+                                              Text(
+                                                'Online',
+                                                style: TextStyle(color: LuxuryTheme.green, fontWeight: FontWeight.w800, fontSize: 10),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Facility capacity',
+                                          icon: const Icon(Icons.tune_rounded, color: LuxuryTheme.ink, size: 22),
+                                          onPressed: _showCapacityEditor,
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Refresh',
+                                          icon: const Icon(Icons.refresh_rounded, color: LuxuryTheme.ink, size: 22),
+                                          onPressed: _load,
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                );
+                              }
+                              return Row(
+                                children: [
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                    width: 46,
+                                    height: 46,
                                     decoration: BoxDecoration(
-                                        color: LuxuryTheme.blue.withValues(alpha: .12),
-                                        borderRadius: BorderRadius.circular(6)),
-                                    child: Text('GST: ${h['gst_number']}',
-                                        style: const TextStyle(
-                                            color: LuxuryTheme.blue, fontWeight: FontWeight.w800, fontSize: 10)),
+                                      color: LuxuryTheme.blue,
+                                      borderRadius: BorderRadius.circular(15),
+                                    ),
+                                    child: const Icon(Icons.local_hospital_rounded, color: Colors.white, size: 25),
                                   ),
-                              ]),
-                              Text('${h['department'] ?? 'Emergency Department'} • Verified Facility Command',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: LuxuryTheme.muted, fontSize: 11)),
-                            ])),
-                            Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                                decoration: BoxDecoration(
-                                    color: LuxuryTheme.green.withValues(alpha: .10),
-                                    borderRadius: BorderRadius.circular(99)),
-                                child: const Row(children: [
-                                  Icon(Icons.circle, color: LuxuryTheme.green, size: 8),
-                                  SizedBox(width: 6),
-                                  Text('Online',
-                                      style:
-                                          TextStyle(color: LuxuryTheme.green, fontWeight: FontWeight.w800, fontSize: 10))
-                                ])),
-                            const SizedBox(width: 10),
-                            _buildLiveTimeBadge(),
-                            const SizedBox(width: 10),
-                            // Executive Hospital Account Button
-                            _buildHospitalAccountButton(),
-                            const SizedBox(width: 8),
-                            IconButton(
-                                tooltip: 'Test Alert Buzzer Sound',
-                                onPressed: () {
-                                  unawaited(AudioBuzzer.playAlert());
-                                  unawaited(SystemSound.play(SystemSoundType.alert));
-                                  HapticFeedback.vibrate();
-                                  _toast('Alert buzzer sound triggered.', LuxuryTheme.blue);
-                                },
-                                icon: const Icon(Icons.notifications_active_rounded, color: LuxuryTheme.amber, size: 24)),
-                            IconButton(
-                                tooltip: 'Facility capacity',
-                                onPressed: _showCapacityEditor,
-                                icon: const Icon(Icons.tune_rounded, color: LuxuryTheme.ink)),
-                            IconButton(
-                                tooltip: 'Refresh',
-                                onPressed: _load,
-                                icon: const Icon(Icons.refresh_rounded, color: LuxuryTheme.ink)),
-                            IconButton(
-                                tooltip: 'Sign out',
-                                onPressed: _confirmSignOut,
-                                icon: const Icon(Icons.logout_rounded, color: LuxuryTheme.ink)),
-                          ]),
+                                  const SizedBox(width: 11),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Wrap(
+                                          crossAxisAlignment: WrapCrossAlignment.center,
+                                          spacing: 8,
+                                          children: [
+                                            Text(
+                                              '$_greeting, ${h['hospital_name'] ?? 'Hospital Portal'}',
+                                              style: const TextStyle(color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 16),
+                                            ),
+                                            if (h['gst_number'] != null)
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: LuxuryTheme.blue.withValues(alpha: .12),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  'GST: ${h['gst_number']}',
+                                                  style: const TextStyle(color: LuxuryTheme.blue, fontWeight: FontWeight.w800, fontSize: 10),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        Text(
+                                          '${h['department'] ?? 'Emergency Department'} • Verified Facility Command',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(color: LuxuryTheme.muted, fontSize: 11),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      color: LuxuryTheme.green.withValues(alpha: .10),
+                                      borderRadius: BorderRadius.circular(99),
+                                    ),
+                                    child: const Row(
+                                      children: [
+                                        Icon(Icons.circle, color: LuxuryTheme.green, size: 8),
+                                        SizedBox(width: 6),
+                                        Text('Online', style: TextStyle(color: LuxuryTheme.green, fontWeight: FontWeight.w800, fontSize: 10)),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _buildLiveTimeBadge(),
+                                  const SizedBox(width: 10),
+                                  _buildHospitalAccountButton(),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    tooltip: 'Facility capacity',
+                                    onPressed: _showCapacityEditor,
+                                    icon: const Icon(Icons.tune_rounded, color: LuxuryTheme.ink),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Refresh',
+                                    onPressed: _load,
+                                    icon: const Icon(Icons.refresh_rounded, color: LuxuryTheme.ink),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Sign out',
+                                    onPressed: _confirmSignOut,
+                                    icon: const Icon(Icons.logout_rounded, color: LuxuryTheme.ink),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
                           const SizedBox(height: 16),
 
                           // Emergency Arrivals Filter Banner

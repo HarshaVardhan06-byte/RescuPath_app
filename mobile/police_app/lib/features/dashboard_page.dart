@@ -978,107 +978,202 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // App Bar / Officer Command Header
-                          Row(
-                            children: [
-                              Container(
-                                width: 46,
-                                height: 46,
-                                decoration: BoxDecoration(
-                                  color: LuxuryTheme.blue,
-                                  borderRadius: BorderRadius.circular(15),
-                                ),
-                                child: const Icon(Icons.shield_rounded, color: Colors.white, size: 25),
-                              ),
-                              const SizedBox(width: 11),
-                              Expanded(
-                                child: Column(
+                          // App Bar / Officer Command Header (Responsive for Mobile & Desktop)
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final isMobile = constraints.maxWidth < 720;
+                              if (isMobile) {
+                                return Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      '$_greeting, ${off['name'] ?? 'Police Command'}',
-                                      style: const TextStyle(color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 17),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          width: 42,
+                                          height: 42,
+                                          decoration: BoxDecoration(
+                                            color: LuxuryTheme.blue,
+                                            borderRadius: BorderRadius.circular(13),
+                                          ),
+                                          child: const Icon(Icons.shield_rounded, color: Colors.white, size: 22),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                '$_greeting, ${off['name'] ?? 'Police Command'}',
+                                                style: const TextStyle(color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 16),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              Text(
+                                                '${off['station_name'] ?? 'Police Command'} • ${off['junction_name'] ?? 'Junction unassigned'}',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(color: LuxuryTheme.muted, fontSize: 11),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Officer Profile',
+                                          icon: const Icon(Icons.account_circle_rounded, color: LuxuryTheme.ink, size: 26),
+                                          onPressed: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => PoliceProfilePage(
+                                                  officer: off,
+                                                  onDuty: onDuty,
+                                                  onToggleDuty: (v) => setState(() => onDuty = v),
+                                                  onRefresh: _load,
+                                                  onLogout: widget.onLogout,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Sign out',
+                                          icon: const Icon(Icons.logout_rounded, color: LuxuryTheme.ink, size: 22),
+                                          onPressed: widget.onLogout,
+                                        ),
+                                      ],
                                     ),
-                                    Text(
-                                      '${off['station_name'] ?? 'Police Command'} • ${off['junction_name'] ?? 'Junction not assigned'}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(color: LuxuryTheme.muted, fontSize: 11),
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      children: [
+                                        _buildLiveTimeBadge(),
+                                        const Spacer(),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                          decoration: BoxDecoration(
+                                            color: (onDuty ? LuxuryTheme.green : LuxuryTheme.amber).withValues(alpha: .10),
+                                            borderRadius: BorderRadius.circular(99),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.circle, color: onDuty ? LuxuryTheme.green : LuxuryTheme.amber, size: 8),
+                                              const SizedBox(width: 5),
+                                              Text(
+                                                onDuty ? 'On duty' : 'Off duty',
+                                                style: TextStyle(
+                                                  color: onDuty ? LuxuryTheme.green : LuxuryTheme.amber,
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Switch(
+                                          value: onDuty,
+                                          onChanged: busy ? null : _toggleDuty,
+                                          activeThumbColor: LuxuryTheme.green,
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Refresh',
+                                          icon: const Icon(Icons.refresh_rounded, color: LuxuryTheme.ink, size: 22),
+                                          onPressed: _load,
+                                        ),
+                                      ],
                                     ),
                                   ],
-                                ),
-                              ),
-                              // Online / Offline Indicator Pill
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                                decoration: BoxDecoration(
-                                  color: (onDuty ? LuxuryTheme.green : LuxuryTheme.amber).withValues(alpha: .10),
-                                  borderRadius: BorderRadius.circular(99),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.circle, color: onDuty ? LuxuryTheme.green : LuxuryTheme.amber, size: 8),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      onDuty ? 'On duty' : 'Off duty',
-                                      style: TextStyle(
-                                        color: onDuty ? LuxuryTheme.green : LuxuryTheme.amber,
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 10,
-                                      ),
+                                );
+                              }
+                              return Row(
+                                children: [
+                                  Container(
+                                    width: 46,
+                                    height: 46,
+                                    decoration: BoxDecoration(
+                                      color: LuxuryTheme.blue,
+                                      borderRadius: BorderRadius.circular(15),
                                     ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              _buildLiveTimeBadge(),
-                              const SizedBox(width: 10),
-                              Switch(
-                                value: onDuty,
-                                onChanged: busy ? null : _toggleDuty,
-                                activeThumbColor: LuxuryTheme.green,
-                              ),
-                              // Test Alert Buzzer Sound Button
-                              IconButton(
-                                tooltip: 'Test Alert Buzzer Sound',
-                                onPressed: () {
-                                  unawaited(AudioBuzzer.playAlert());
-                                  unawaited(SystemSound.play(SystemSoundType.alert));
-                                  HapticFeedback.vibrate();
-                                  _toast('Alert buzzer sound triggered.', LuxuryTheme.blue);
-                                },
-                                icon: const Icon(Icons.notifications_active_rounded, color: LuxuryTheme.amber, size: 24),
-                              ),
-                              // Profile Page Button
-                              IconButton(
-                                tooltip: 'Officer Profile',
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => PoliceProfilePage(
-                                        officer: off,
-                                        onDuty: onDuty,
-                                        onToggleDuty: (v) => setState(() => onDuty = v),
-                                        onRefresh: _load,
-                                        onLogout: widget.onLogout,
-                                      ),
+                                    child: const Icon(Icons.shield_rounded, color: Colors.white, size: 25),
+                                  ),
+                                  const SizedBox(width: 11),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '$_greeting, ${off['name'] ?? 'Police Command'}',
+                                          style: const TextStyle(color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 17),
+                                        ),
+                                        Text(
+                                          '${off['station_name'] ?? 'Police Command'} • ${off['junction_name'] ?? 'Junction not assigned'}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(color: LuxuryTheme.muted, fontSize: 11),
+                                        ),
+                                      ],
                                     ),
-                                  );
-                                },
-                                icon: const Icon(Icons.account_circle_rounded, color: LuxuryTheme.ink, size: 26),
-                              ),
-                              IconButton(
-                                tooltip: 'Refresh',
-                                onPressed: _load,
-                                icon: const Icon(Icons.refresh_rounded, color: LuxuryTheme.ink),
-                              ),
-                              IconButton(
-                                tooltip: 'Sign out',
-                                onPressed: widget.onLogout,
-                                icon: const Icon(Icons.logout_rounded, color: LuxuryTheme.ink),
-                              ),
-                            ],
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      color: (onDuty ? LuxuryTheme.green : LuxuryTheme.amber).withValues(alpha: .10),
+                                      borderRadius: BorderRadius.circular(99),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.circle, color: onDuty ? LuxuryTheme.green : LuxuryTheme.amber, size: 8),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          onDuty ? 'On duty' : 'Off duty',
+                                          style: TextStyle(
+                                            color: onDuty ? LuxuryTheme.green : LuxuryTheme.amber,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _buildLiveTimeBadge(),
+                                  const SizedBox(width: 10),
+                                  Switch(
+                                    value: onDuty,
+                                    onChanged: busy ? null : _toggleDuty,
+                                    activeThumbColor: LuxuryTheme.green,
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Officer Profile',
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => PoliceProfilePage(
+                                            officer: off,
+                                            onDuty: onDuty,
+                                            onToggleDuty: (v) => setState(() => onDuty = v),
+                                            onRefresh: _load,
+                                            onLogout: widget.onLogout,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(Icons.account_circle_rounded, color: LuxuryTheme.ink, size: 26),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Refresh',
+                                    onPressed: _load,
+                                    icon: const Icon(Icons.refresh_rounded, color: LuxuryTheme.ink),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Sign out',
+                                    onPressed: widget.onLogout,
+                                    icon: const Icon(Icons.logout_rounded, color: LuxuryTheme.ink),
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                           const SizedBox(height: 16),
 

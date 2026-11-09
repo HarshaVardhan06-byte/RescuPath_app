@@ -113,19 +113,23 @@ class _HomePageState extends State<HomePage> {
         onRefresh: load,
         child: LayoutBuilder(
           builder: (context, constraints) {
+            final screenWidth = MediaQuery.sizeOf(context).width;
+            final circleSize = (screenWidth * 0.56).clamp(190.0, 240.0);
+
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(vertical: 20),
+              padding: const EdgeInsets.symmetric(vertical: 18),
               children: [
                 Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 820),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(
                                 child: Column(
@@ -153,9 +157,9 @@ class _HomePageState extends State<HomePage> {
                                       '$_greeting, ${summary['user_name'] ?? 'Paramedic'}',
                                       style: const TextStyle(
                                         color: AppTheme.ink,
-                                        fontSize: 27,
+                                        fontSize: 24,
                                         fontWeight: FontWeight.w900,
-                                        height: 1.1,
+                                        height: 1.15,
                                       ),
                                     ),
                                     const SizedBox(height: 6),
@@ -176,7 +180,7 @@ class _HomePageState extends State<HomePage> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 48),
+                          const SizedBox(height: 36),
 
                           // Large prominent round circle button: Create an Emergency / SOS
                           Center(
@@ -184,7 +188,7 @@ class _HomePageState extends State<HomePage> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.all(14),
+                                  padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     border: Border.all(
@@ -213,8 +217,8 @@ class _HomePageState extends State<HomePage> {
                                       splashColor: Colors.white.withValues(alpha: .28),
                                       highlightColor: Colors.white.withValues(alpha: .18),
                                       child: Ink(
-                                        width: 250,
-                                        height: 250,
+                                        width: circleSize,
+                                        height: circleSize,
                                         decoration: BoxDecoration(
                                           shape: BoxShape.circle,
                                           gradient: const LinearGradient(

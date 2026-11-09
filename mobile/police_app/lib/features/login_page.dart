@@ -255,7 +255,12 @@ class _PoliceForgotSheetState extends State<_PoliceForgotSheet> {
       if (mounted) {
         setState(() {
           step = 2;
-          modalSuccess = res['message']?.toString() ?? 'Verification code sent to your Gmail. Please check your inbox and enter the 6-digit OTP below.';
+          final sent = res['email_sent'] == true;
+          if (sent) {
+            modalSuccess = 'A 6-digit verification code has been dispatched to $mail. Check your Gmail inbox (and Spam folder).';
+          } else {
+            modalSuccess = 'Verification code for $mail: [ ${res['otp']} ]. Enter this code below to set your new password.';
+          }
           otpCtrl.clear();
         });
       }

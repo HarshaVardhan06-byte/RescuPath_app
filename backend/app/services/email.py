@@ -115,12 +115,34 @@ def send_password_reset_otp_email(recipient: str, otp: str, user_name: str | Non
         message.set_content(plain_content)
         message.add_alternative(html_content, subtype="html")
 
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
-            server.starttls()
-            server.login(smtp_username, smtp_password)
-            server.send_message(message)
-        logger.info(f"Successfully sent password reset OTP email to {recipient}")
-        return True
+        # Try SSL on port 465 first (more reliable on cloud hosts), fallback to STARTTLS on 587
+        delivered = False
+        last_error = None
+        for port, use_ssl in [(465, True), (smtp_port, False), (587, False)]:
+            try:
+                if use_ssl:
+                    with smtplib.SMTP_SSL(smtp_host, port, timeout=8) as server:
+                        server.login(smtp_username, smtp_password)
+                        server.send_message(message)
+                        delivered = True
+                        break
+                else:
+                    with smtplib.SMTP(smtp_host, port, timeout=8) as server:
+                        server.starttls()
+                        server.login(smtp_username, smtp_password)
+                        server.send_message(message)
+                        delivered = True
+                        break
+            except Exception as conn_err:
+                last_error = conn_err
+                continue
+
+        if delivered:
+            logger.info(f"Successfully delivered password reset OTP email to {recipient}")
+            return True
+        else:
+            logger.error(f"Failed to dispatch email to {recipient} across SMTP ports: {last_error}")
+            return False
     except Exception as e:
         logger.error(f"Failed to dispatch password reset OTP email to {recipient}: {e}")
         return False

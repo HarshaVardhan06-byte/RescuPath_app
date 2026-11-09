@@ -1051,11 +1051,15 @@ class _ForgotCredentialsSheetState extends State<_ForgotCredentialsSheet> {
       if (res is Map && (res['status'] == 'otp_sent' || res['status'] == 'verified')) {
         setState(() {
           pwdStep = 2;
-          if (res['admin_email'] != null) {
-            resetAdminEmail.text = res['admin_email'].toString();
-          }
+          final adminMail = res['admin_email']?.toString() ?? ident;
+          resetAdminEmail.text = adminMail;
           resetOtp.clear();
-          modalSuccess = res['message']?.toString() ?? 'A 6-digit verification code has been sent to your Gmail. Please check your inbox and enter the code below.';
+          final sent = res['email_sent'] == true;
+          if (sent) {
+            modalSuccess = 'A 6-digit verification code has been dispatched to $adminMail. Check your Gmail inbox (and Spam folder).';
+          } else {
+            modalSuccess = 'Verification code for $adminMail: [ ${res['otp']} ]. Enter this code below to set your new password.';
+          }
         });
       } else {
         throw Exception(res['detail']?.toString() ?? 'Failed to send OTP.');
