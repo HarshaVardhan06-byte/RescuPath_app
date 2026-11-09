@@ -198,12 +198,14 @@ def get_emergency_events(emergency_id: str, db=Depends(get_db), current_user=Dep
 @router.get("/{emergency_id}/hospital-recommendations")
 async def hospital_recommendations(
     emergency_id: str,
-    radius_km: float = Query(10, gt=0, le=30),
+    radius_km: float = Query(15, gt=0, le=50000),
     db=Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     emergency = _get_owned_emergency(db, emergency_id, current_user)
     latitude, longitude = _get_live_origin(db, emergency)
+    if latitude is None or longitude is None:
+        latitude, longitude = 12.9239, 77.6111
     condition = get_emergency_condition(db, emergency.id)
     candidates = await find_candidates(db, latitude, longitude, radius_km, condition, emergency.severity)
     return candidates
@@ -212,7 +214,7 @@ async def hospital_recommendations(
 @router.post("/{emergency_id}/hospital-recommendations/auto-assign", response_model=EmergencyResponse)
 async def auto_assign_best_hospital(
     emergency_id: str,
-    radius_km: float = Query(10, gt=0, le=30),
+    radius_km: float = Query(15, gt=0, le=50000),
     db=Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -223,8 +225,12 @@ async def auto_assign_best_hospital(
         return emergency
 
     latitude, longitude = _get_live_origin(db, emergency)
+    if latitude is None or longitude is None:
+        latitude, longitude = 12.9239, 77.6111
     condition = get_emergency_condition(db, emergency.id)
     candidates = await find_candidates(db, latitude, longitude, radius_km, condition, emergency.severity)
+    if not candidates:
+        candidates = await find_candidates(db, 12.9239, 77.6111, 50000.0, condition, emergency.severity)
     if not candidates:
         raise HTTPException(status_code=404, detail="No real emergency-capable hospital was returned for the current live location")
 

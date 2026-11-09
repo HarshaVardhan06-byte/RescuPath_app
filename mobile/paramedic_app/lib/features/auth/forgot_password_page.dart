@@ -39,10 +39,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       if (mounted) {
         setState(() {
           step = 2;
-          message = r['message']?.toString() ?? 'A 6-digit verification code has been sent to your email.';
-          if (r['otp'] != null && otp.text.isEmpty) {
-            otp.text = r['otp'].toString();
-          }
+          message = r['message']?.toString() ?? 'A 6-digit verification code has been sent to your email. Please check your Gmail inbox and enter the code below.';
+          otp.clear();
         });
       }
     } catch (e) {

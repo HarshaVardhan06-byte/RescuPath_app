@@ -255,10 +255,8 @@ class _PoliceForgotSheetState extends State<_PoliceForgotSheet> {
       if (mounted) {
         setState(() {
           step = 2;
-          modalSuccess = res['message']?.toString() ?? 'Verification code sent to your Gmail.';
-          if (res['otp'] != null && otpCtrl.text.isEmpty) {
-            otpCtrl.text = res['otp'].toString();
-          }
+          modalSuccess = res['message']?.toString() ?? 'Verification code sent to your Gmail. Please check your inbox and enter the 6-digit OTP below.';
+          otpCtrl.clear();
         });
       }
     } catch (e) {

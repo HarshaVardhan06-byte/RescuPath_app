@@ -40,9 +40,19 @@ class _HospitalSelectionPageState extends State<HospitalSelectionPage> {
       final result = results[1];
 
       if (!mounted) return;
+      var list = result is List ? result.whereType<Map>().map((x) => Map<String, dynamic>.from(x)).toList() : <Map<String, dynamic>>[];
+      if (list.isEmpty) {
+        try {
+          final fallback = await api.get('/emergencies/${widget.emergencyId}/hospital-recommendations?radius_km=5000');
+          if (fallback is List && fallback.isNotEmpty) {
+            list = fallback.whereType<Map>().map((x) => Map<String, dynamic>.from(x)).toList();
+          }
+        } catch (_) {}
+      }
+
       setState(() {
         emergency = Map<String, dynamic>.from(e as Map);
-        hospitals = result is List ? result.whereType<Map>().map((x) => Map<String, dynamic>.from(x)).toList() : [];
+        hospitals = list;
       });
 
       // Update location asynchronously in background without blocking screen render

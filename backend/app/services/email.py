@@ -39,8 +39,21 @@ def send_password_reset_email(recipient: str, token: str) -> bool:
 def send_password_reset_otp_email(recipient: str, otp: str, user_name: str | None = None) -> bool:
     smtp_host = settings.smtp_host or os.getenv("SMTP_HOST") or "smtp.gmail.com"
     smtp_port = settings.smtp_port or int(os.getenv("SMTP_PORT", "587"))
-    smtp_username = settings.smtp_username or os.getenv("SMTP_USERNAME") or os.getenv("GMAIL_USER")
-    smtp_password = settings.smtp_password or os.getenv("SMTP_PASSWORD") or os.getenv("GMAIL_APP_PASSWORD")
+    smtp_username = (
+        settings.smtp_username
+        or os.getenv("SMTP_USERNAME")
+        or os.getenv("SMTP_USER")
+        or os.getenv("GMAIL_USER")
+        or os.getenv("GMAIL_USERNAME")
+        or os.getenv("GMAIL_ADDRESS")
+    )
+    smtp_password = (
+        settings.smtp_password
+        or os.getenv("SMTP_PASSWORD")
+        or os.getenv("SMTP_PASS")
+        or os.getenv("GMAIL_APP_PASSWORD")
+        or os.getenv("GMAIL_PASSWORD")
+    )
     smtp_from = settings.smtp_from or os.getenv("SMTP_FROM") or smtp_username or "noreply@rescupath.org"
 
     greeting = f"Hello {user_name}," if user_name else "Hello,"
