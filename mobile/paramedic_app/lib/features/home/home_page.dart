@@ -642,12 +642,14 @@ class _EmergencyListState extends State<_EmergencyList> {
 
   Future<void> _batchDeleteHistory() async {
     if (_selectedHistoryIds.isEmpty) return;
+    final idsToDelete = List<String>.from(_selectedHistoryIds);
+    final count = idsToDelete.length;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete from Database & Cache?', style: TextStyle(fontWeight: FontWeight.w900)),
         content: Text(
-          'Permanently delete ${idsToDelete.length} emergency records from database and cache? This action cannot be undone.',
+          'Permanently delete $count emergency records from database and cache? This action cannot be undone.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -661,8 +663,6 @@ class _EmergencyListState extends State<_EmergencyList> {
     );
 
     if (confirmed != true) return;
-
-    final idsToDelete = List<String>.from(_selectedHistoryIds);
     try {
       await api.post('/emergencies/batch-delete', {'emergency_ids': idsToDelete});
       setState(() {
