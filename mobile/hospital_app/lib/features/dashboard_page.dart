@@ -1299,20 +1299,23 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
         crossAxisAlignment: WrapCrossAlignment.center,
         alignment: WrapAlignment.spaceBetween,
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const Icon(Icons.filter_list_rounded, size: 16, color: LuxuryTheme.blue),
-              const SizedBox(width: 6),
-              Text('Filter $activeFilter by Time:',
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: LuxuryTheme.ink)),
-              const SizedBox(width: 8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.filter_list_rounded, size: 16, color: LuxuryTheme.blue),
+                  const SizedBox(width: 5),
+                  Text('Filter $activeFilter:',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: LuxuryTheme.ink)),
+                ],
+              ),
               _timeFilterChip('ALL', 'All Time'),
-              const SizedBox(width: 4),
               _timeFilterChip('TODAY', 'Today'),
-              const SizedBox(width: 4),
               _timeFilterChip('THIS_MONTH', 'This Month'),
-              const SizedBox(width: 4),
               _timeFilterChip('THIS_YEAR', 'This Year'),
             ],
           ),
@@ -2121,13 +2124,17 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                     ),
                                     child: Row(
                                       children: [
-                                        Text(
-                                          _selectedHistoryIds.isEmpty
-                                              ? '${requestsToDisplay.length} total • ${activeFilter == "HISTORY" ? "Archived History" : "Active Incoming"}'
-                                              : '${_selectedHistoryIds.length} of ${requestsToDisplay.length} selected',
-                                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: LuxuryTheme.ink),
+                                        Expanded(
+                                          child: Text(
+                                            _selectedHistoryIds.isEmpty
+                                                ? '${requestsToDisplay.length} total • ${activeFilter == "HISTORY" ? "Archived History" : "Active Incoming"}'
+                                                : '${_selectedHistoryIds.length} of ${requestsToDisplay.length} selected',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: LuxuryTheme.ink),
+                                          ),
                                         ),
-                                        const Spacer(),
+                                        const SizedBox(width: 8),
                                         if (_selectedHistoryIds.isNotEmpty) ...[
                                           if (activeFilter == 'HISTORY')
                                             FilledButton.icon(
@@ -2426,9 +2433,10 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
           ],
 
           const SizedBox(height: 10),
-          Row(children: [
-            Expanded(
-              child: OutlinedButton.icon(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 460;
+              final viewDetailsBtn = OutlinedButton.icon(
                 onPressed: () async {
                   setState(() {
                     if (isExpanded) {
@@ -2453,25 +2461,64 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                   isExpanded ? 'Hide Patient Details' : 'View Details',
                   style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
                 ),
-              ),
-            ),
-            if (requestStatus == 'REQUESTED' && !terminal && !isDismissed) ...[
-              const SizedBox(width: 8),
-              Expanded(
-                  child: FilledButton.icon(
-                      onPressed: saving ? null : () => _respond('ACCEPTED', request: item),
-                      icon: const Icon(Icons.check_rounded, size: 18),
-                      label: const Text('Accept'),
-                      style: FilledButton.styleFrom(backgroundColor: LuxuryTheme.green))),
-              const SizedBox(width: 8),
-              Expanded(
-                  child: FilledButton.icon(
-                      onPressed: saving ? null : () => _respond('DECLINED', request: item),
-                      icon: const Icon(Icons.close_rounded, size: 18),
-                      label: const Text('Decline'),
-                      style: FilledButton.styleFrom(backgroundColor: LuxuryTheme.red))),
-            ],
-          ]),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                ),
+              );
+
+              final hasIntakeActions = requestStatus == 'REQUESTED' && !terminal && !isDismissed;
+              if (!hasIntakeActions) {
+                return viewDetailsBtn;
+              }
+
+              final acceptBtn = FilledButton.icon(
+                onPressed: saving ? null : () => _respond('ACCEPTED', request: item),
+                icon: const Icon(Icons.check_rounded, size: 18),
+                label: const Text('Accept'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: LuxuryTheme.green,
+                  minimumSize: const Size.fromHeight(44),
+                ),
+              );
+
+              final declineBtn = FilledButton.icon(
+                onPressed: saving ? null : () => _respond('DECLINED', request: item),
+                icon: const Icon(Icons.close_rounded, size: 18),
+                label: const Text('Decline'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: LuxuryTheme.red,
+                  minimumSize: const Size.fromHeight(44),
+                ),
+              );
+
+              if (isNarrow) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    viewDetailsBtn,
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: acceptBtn),
+                        const SizedBox(width: 8),
+                        Expanded(child: declineBtn),
+                      ],
+                    ),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: viewDetailsBtn),
+                  const SizedBox(width: 8),
+                  Expanded(child: acceptBtn),
+                  const SizedBox(width: 8),
+                  Expanded(child: declineBtn),
+                ],
+              );
+            },
+          ),
 
           if (requestStatus == 'ACCEPTED') ...[
             const SizedBox(height: 6),

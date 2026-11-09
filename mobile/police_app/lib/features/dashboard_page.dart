@@ -1284,11 +1284,15 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                             // Sort Order & Time Filter Controls
                             Row(
                               children: [
-                                Text(
-                                  'Filter: $activeFilter (${list.length})',
-                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: LuxuryTheme.ink),
+                                Expanded(
+                                  child: Text(
+                                    'Filter: $activeFilter (${list.length})',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: LuxuryTheme.ink),
+                                  ),
                                 ),
-                                const Spacer(),
+                                const SizedBox(width: 8),
                                 // Time Filter dropdown
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -1377,13 +1381,17 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                                         ),
                                         child: Row(
                                           children: [
-                                            Text(
-                                              _selectedHistoryIds.isEmpty
-                                                  ? '${list.length} total • ${activeFilter == "HISTORY" ? "Archived Dispatches" : "Active Alerts"}'
-                                                  : '${_selectedHistoryIds.length} of ${list.length} selected',
-                                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: LuxuryTheme.ink),
+                                            Expanded(
+                                              child: Text(
+                                                _selectedHistoryIds.isEmpty
+                                                    ? '${list.length} total • ${activeFilter == "HISTORY" ? "Archived Dispatches" : "Active Alerts"}'
+                                                    : '${_selectedHistoryIds.length} of ${list.length} selected',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: LuxuryTheme.ink),
+                                              ),
                                             ),
-                                            const Spacer(),
+                                            const SizedBox(width: 8),
                                             if (_selectedHistoryIds.isNotEmpty) ...[
                                               if (activeFilter == 'HISTORY')
                                                 FilledButton.icon(

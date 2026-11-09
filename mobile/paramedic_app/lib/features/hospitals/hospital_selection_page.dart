@@ -134,8 +134,9 @@ class _HospitalSelectionPageState extends State<HospitalSelectionPage> {
                         const SizedBox(width: 11),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           const Text('Patient condition', style: TextStyle(color: AppTheme.ink, fontWeight: FontWeight.w900)),
-                          Text('${emergency?['severity'] ?? widget.initialSeverity} • ${hospitals.isNotEmpty ? hospitals.first['condition']?.toString().replaceAll('_', ' ') : 'EMERGENCY'}', style: const TextStyle(color: AppTheme.muted, fontSize: 11)),
+                          Text('${emergency?['severity'] ?? widget.initialSeverity} • ${hospitals.isNotEmpty ? hospitals.first['condition']?.toString().replaceAll('_', ' ') : 'EMERGENCY'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.muted, fontSize: 11)),
                         ])),
+                        const SizedBox(width: 8),
                         const StatusChip('SPECIALTY MATCH', color: AppTheme.green),
                       ]),
                     ),
@@ -213,6 +214,8 @@ class _HospitalSelectionPageState extends State<HospitalSelectionPage> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(
                   h['hospital_name']?.toString() ?? 'Hospital',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: AppTheme.ink, fontSize: 16, fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 4),
@@ -249,9 +252,13 @@ class _HospitalSelectionPageState extends State<HospitalSelectionPage> {
                     children: [
                       const Icon(Icons.bed_rounded, size: 16, color: AppTheme.blue),
                       const SizedBox(width: 5),
-                      Text(
-                        '${h['icu_beds_available'] ?? 12} ICU Beds',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppTheme.ink),
+                      Expanded(
+                        child: Text(
+                          '${h['icu_beds_available'] ?? 12} ICU Beds',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppTheme.ink),
+                        ),
                       ),
                     ],
                   ),
@@ -263,9 +270,13 @@ class _HospitalSelectionPageState extends State<HospitalSelectionPage> {
                     children: [
                       const Icon(Icons.air_rounded, size: 16, color: Color(0xFF00897B)),
                       const SizedBox(width: 5),
-                      Text(
-                        '${h['oxygen_cylinders_available'] ?? 20} O₂ Cylinders',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppTheme.ink),
+                      Expanded(
+                        child: Text(
+                          '${h['oxygen_cylinders_available'] ?? 20} O₂ Cylinders',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppTheme.ink),
+                        ),
                       ),
                     ],
                   ),

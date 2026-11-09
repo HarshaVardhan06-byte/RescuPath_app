@@ -713,13 +713,17 @@ class _EmergencyListState extends State<_EmergencyList> {
             ),
             child: Row(
               children: [
-                Text(
-                  _selectedHistoryIds.isEmpty
-                      ? '${displayedList.length} total • ${emergencyFilter == 0 ? "Active Responses" : "Completed History"}'
-                      : '${_selectedHistoryIds.length} of ${displayedList.length} selected',
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppTheme.ink),
+                Expanded(
+                  child: Text(
+                    _selectedHistoryIds.isEmpty
+                        ? '${displayedList.length} total • ${emergencyFilter == 0 ? "Active Responses" : "Completed History"}'
+                        : '${_selectedHistoryIds.length} of ${displayedList.length} selected',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppTheme.ink),
+                  ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
                 if (_selectedHistoryIds.isNotEmpty) ...[
                   if (emergencyFilter == 0)
                     FilledButton.icon(
@@ -865,11 +869,15 @@ class _EmergencyListState extends State<_EmergencyList> {
                         children: [
                           Text(
                             routeLabel,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(color: AppTheme.ink, fontWeight: FontWeight.w900, fontSize: 14),
                           ),
                           const SizedBox(height: 3),
                           Text(
                             '$severityText • $conditionText • $statusText',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(color: AppTheme.muted, fontSize: 11),
                           ),
                         ],

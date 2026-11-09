@@ -1452,7 +1452,27 @@ class _HospitalNavigationPageState extends State<HospitalNavigationPage> {
         color: Colors.white.withValues(alpha: .14),
       );
 
-  Widget _action(IconData icon, String label, Color color, VoidCallback? onTap) => SizedBox(height: 52, child: FilledButton.icon(onPressed: onTap, icon: Icon(icon, size: 19), label: Text(label, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 10)), style: FilledButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)), padding: const EdgeInsets.symmetric(horizontal: 9))));
+  Widget _action(IconData icon, String label, Color color, VoidCallback? onTap) => SizedBox(
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: onTap,
+          icon: Icon(icon, size: 18),
+          label: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              maxLines: 1,
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 10),
+            ),
+          ),
+          style: FilledButton.styleFrom(
+            backgroundColor: color,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+          ),
+        ),
+      );
   Widget _mapTool(IconData icon, VoidCallback onTap) => Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: const [BoxShadow(color: Color(0x330A1930), blurRadius: 18)]), child: IconButton(onPressed: onTap, icon: Icon(icon, color: AppTheme.ink)));
   Widget _glassButton(IconData icon, VoidCallback onTap, String tooltip, {Color? fill}) => Container(
         decoration: BoxDecoration(

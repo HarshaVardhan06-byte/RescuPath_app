@@ -255,32 +255,31 @@ class _HospitalLoginPageState extends State<HospitalLoginPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      loginWithGst ? 'GST Sign In' : 'Administrator Sign In',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: LuxuryTheme.ink,
-                      ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 440;
+              final titleBlock = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    loginWithGst ? 'GST Sign In' : 'Administrator Sign In',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: LuxuryTheme.ink,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      loginWithGst
-                          ? 'Enter your 15-character Hospital GST Number (GSTIN).'
-                          : 'Sign in with your registered administrator work email.',
-                      style: const TextStyle(color: LuxuryTheme.muted, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              // Segmented Button to switch between GST and Email
-              Container(
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    loginWithGst
+                        ? 'Enter your 15-character Hospital GST Number (GSTIN).'
+                        : 'Sign in with your registered administrator work email.',
+                    style: const TextStyle(color: LuxuryTheme.muted, fontSize: 12),
+                  ),
+                ],
+              );
+
+              final toggleBlock = Container(
                 decoration: BoxDecoration(
                   color: LuxuryTheme.bg,
                   borderRadius: BorderRadius.circular(12),
@@ -288,14 +287,35 @@ class _HospitalLoginPageState extends State<HospitalLoginPage> {
                 ),
                 padding: const EdgeInsets.all(3),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize: isNarrow ? MainAxisSize.max : MainAxisSize.min,
                   children: [
-                    _toggleBtn('GST ID', loginWithGst, () => setState(() => loginWithGst = true)),
-                    _toggleBtn('Email', !loginWithGst, () => setState(() => loginWithGst = false)),
+                    isNarrow
+                        ? Expanded(child: _toggleBtn('GST ID', loginWithGst, () => setState(() => loginWithGst = true)))
+                        : _toggleBtn('GST ID', loginWithGst, () => setState(() => loginWithGst = true)),
+                    isNarrow
+                        ? Expanded(child: _toggleBtn('Email', !loginWithGst, () => setState(() => loginWithGst = false)))
+                        : _toggleBtn('Email', !loginWithGst, () => setState(() => loginWithGst = false)),
                   ],
                 ),
-              ),
-            ],
+              );
+
+              return isNarrow
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        titleBlock,
+                        const SizedBox(height: 12),
+                        toggleBlock,
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(child: titleBlock),
+                        const SizedBox(width: 12),
+                        toggleBlock,
+                      ],
+                    );
+            },
           ),
           const SizedBox(height: 20),
 
@@ -562,70 +582,82 @@ class _HospitalLoginPageState extends State<HospitalLoginPage> {
           ),
           const SizedBox(height: 10),
 
-          Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: TextField(
-                  controller: regGstNumber,
-                  textCapitalization: TextCapitalization.characters,
-                  decoration: InputDecoration(
-                    labelText: 'Hospital GST Number (GSTIN) *',
-                    hintText: '29XXXXXXXXXX1ZX',
-                    prefixIcon: const Icon(Icons.badge_outlined),
-                    suffixIcon: regGstVerified
-                        ? const Icon(Icons.check_circle, color: LuxuryTheme.green)
-                        : null,
-                  ),
-                  onChanged: (val) {
-                    if (val.trim().length >= 5) {
-                      setState(() {
-                        regGstVerified = true;
-                        if (error != null) error = null;
-                      });
-                    }
-                  },
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 480;
+              final gstField = TextField(
+                controller: regGstNumber,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  labelText: 'Hospital GST Number (GSTIN) *',
+                  hintText: '29XXXXXXXXXX1ZX',
+                  prefixIcon: const Icon(Icons.badge_outlined),
+                  suffixIcon: regGstVerified
+                      ? const Icon(Icons.check_circle, color: LuxuryTheme.green)
+                      : null,
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 2,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    final clean = regGstNumber.text.trim();
-                    if (clean.length >= 8) {
-                      setState(() {
-                        regGstVerified = true;
-                        error = null;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          backgroundColor: LuxuryTheme.green,
-                          content: Text('GSTIN $clean verified via Ministry of Corporate Affairs / GST portal format.'),
-                        ),
-                      );
-                    } else {
-                      setState(() => error = 'Enter at least 8 alphanumeric characters to verify GSTIN.');
-                    }
-                  },
-                  icon: Icon(regGstVerified ? Icons.verified : Icons.verified_user_outlined,
-                      color: regGstVerified ? LuxuryTheme.green : LuxuryTheme.blue, size: 18),
-                  label: Text(
-                    regGstVerified ? 'Verified' : 'Verify GST',
-                    style: TextStyle(
-                      color: regGstVerified ? LuxuryTheme.green : LuxuryTheme.blue,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    side: BorderSide(color: regGstVerified ? LuxuryTheme.green : LuxuryTheme.line),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                onChanged: (val) {
+                  if (val.trim().length >= 5) {
+                    setState(() {
+                      regGstVerified = true;
+                      if (error != null) error = null;
+                    });
+                  }
+                },
+              );
+
+              final verifyBtn = OutlinedButton.icon(
+                onPressed: () {
+                  final clean = regGstNumber.text.trim();
+                  if (clean.length >= 8) {
+                    setState(() {
+                      regGstVerified = true;
+                      error = null;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: LuxuryTheme.green,
+                        content: Text('GSTIN $clean verified via Ministry of Corporate Affairs / GST portal format.'),
+                      ),
+                    );
+                  } else {
+                    setState(() => error = 'Enter at least 8 alphanumeric characters to verify GSTIN.');
+                  }
+                },
+                icon: Icon(regGstVerified ? Icons.verified : Icons.verified_user_outlined,
+                    color: regGstVerified ? LuxuryTheme.green : LuxuryTheme.blue, size: 18),
+                label: Text(
+                  regGstVerified ? 'Verified' : 'Verify GST',
+                  style: TextStyle(
+                    color: regGstVerified ? LuxuryTheme.green : LuxuryTheme.blue,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
                   ),
                 ),
-              ),
-            ],
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  side: BorderSide(color: regGstVerified ? LuxuryTheme.green : LuxuryTheme.line),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+              );
+
+              return isNarrow
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        gstField,
+                        const SizedBox(height: 8),
+                        verifyBtn,
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(flex: 3, child: gstField),
+                        const SizedBox(width: 8),
+                        Expanded(flex: 2, child: verifyBtn),
+                      ],
+                    );
+            },
           ),
           const SizedBox(height: 10),
 
@@ -727,163 +759,235 @@ class _HospitalLoginPageState extends State<HospitalLoginPage> {
           // 3. ADMINISTRATOR & EMERGENCY SECURITY
           _sectionHeader('3. ADMINISTRATOR & ACCESS CREDENTIALS', Icons.admin_panel_settings_outlined),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: regAdminName,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(
-                    labelText: 'Admin Full Name *',
-                    prefixIcon: Icon(Icons.person_outline),
-                  ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 460;
+              final nameField = TextField(
+                controller: regAdminName,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Admin Full Name *',
+                  prefixIcon: Icon(Icons.person_outline),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: regPhone,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'Emergency Phone / Hotline *',
-                    hintText: '+91 80 2297 5000',
-                    prefixIcon: Icon(Icons.phone_outlined),
-                  ),
+              );
+              final phoneField = TextField(
+                controller: regPhone,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Emergency Phone / Hotline *',
+                  hintText: '+91 80 2297 5000',
+                  prefixIcon: Icon(Icons.phone_outlined),
                 ),
-              ),
-            ],
+              );
+
+              return isNarrow
+                  ? Column(
+                      children: [
+                        nameField,
+                        const SizedBox(height: 10),
+                        phoneField,
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(child: nameField),
+                        const SizedBox(width: 10),
+                        Expanded(child: phoneField),
+                      ],
+                    );
+            },
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: regAdminEmail,
-                  keyboardType: TextInputType.emailAddress,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Admin Work Email (For Recovery) *',
-                    hintText: 'admin@hospital.org',
-                    prefixIcon: Icon(Icons.alternate_email),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 460;
+              final emailField = TextField(
+                controller: regAdminEmail,
+                keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: 'Admin Work Email (For Recovery) *',
+                  hintText: 'admin@hospital.org',
+                  prefixIcon: Icon(Icons.alternate_email),
+                ),
+              );
+              final passwordField = TextField(
+                controller: regPassword,
+                obscureText: obscure,
+                decoration: InputDecoration(
+                  labelText: 'Emergency Admin Password *',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  suffixIcon: IconButton(
+                    onPressed: () => setState(() => obscure = !obscure),
+                    icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: regPassword,
-                  obscureText: obscure,
-                  decoration: InputDecoration(
-                    labelText: 'Emergency Admin Password *',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      onPressed: () => setState(() => obscure = !obscure),
-                      icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+              );
+
+              return isNarrow
+                  ? Column(
+                      children: [
+                        emailField,
+                        const SizedBox(height: 10),
+                        passwordField,
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(child: emailField),
+                        const SizedBox(width: 10),
+                        Expanded(child: passwordField),
+                      ],
+                    );
+            },
           ),
           const SizedBox(height: 18),
 
           // 4. BEDS, INVENTORY & INFRASTRUCTURE
           _sectionHeader('4. EMERGENCY INVENTORY & INFRASTRUCTURE', Icons.inventory_2_outlined),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: regIcu,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'ICU Beds Available', prefixIcon: Icon(Icons.bed_rounded)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: regErBeds,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'ER Beds', prefixIcon: Icon(Icons.hotel_rounded)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: regVents,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Ventilators', prefixIcon: Icon(Icons.air_rounded)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: regO2,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'O₂ Cylinders', prefixIcon: Icon(Icons.gas_meter_outlined)),
-                ),
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 580;
+              final icuField = TextField(
+                controller: regIcu,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'ICU Beds Available', prefixIcon: Icon(Icons.bed_rounded)),
+              );
+              final erField = TextField(
+                controller: regErBeds,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'ER Beds', prefixIcon: Icon(Icons.hotel_rounded)),
+              );
+              final ventField = TextField(
+                controller: regVents,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Ventilators', prefixIcon: Icon(Icons.air_rounded)),
+              );
+              final o2Field = TextField(
+                controller: regO2,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'O₂ Cylinders', prefixIcon: Icon(Icons.gas_meter_outlined)),
+              );
+
+              if (isNarrow) {
+                return Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: icuField),
+                        const SizedBox(width: 8),
+                        Expanded(child: erField),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(child: ventField),
+                        const SizedBox(width: 8),
+                        Expanded(child: o2Field),
+                      ],
+                    ),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: icuField),
+                  const SizedBox(width: 8),
+                  Expanded(child: erField),
+                  const SizedBox(width: 8),
+                  Expanded(child: ventField),
+                  const SizedBox(width: 8),
+                  Expanded(child: o2Field),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: regStaff,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Staff on Duty', prefixIcon: Icon(Icons.people_outline)),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 500;
+              final staffField = TextField(
+                controller: regStaff,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Staff on Duty', prefixIcon: Icon(Icons.people_outline)),
+              );
+              final parkingField = Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: LuxuryTheme.line),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: LuxuryTheme.line),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.local_parking_rounded, color: LuxuryTheme.blue),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          'Ambulance Parking Available',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: LuxuryTheme.ink),
-                        ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.local_parking_rounded, color: LuxuryTheme.blue),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Ambulance Parking Available',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: LuxuryTheme.ink),
                       ),
-                      Switch(
-                        value: regAmbulanceParking,
-                        activeThumbColor: LuxuryTheme.green,
-                        onChanged: (val) => setState(() => regAmbulanceParking = val),
-                      ),
-                    ],
-                  ),
+                    ),
+                    Switch(
+                      value: regAmbulanceParking,
+                      activeThumbColor: LuxuryTheme.green,
+                      onChanged: (val) => setState(() => regAmbulanceParking = val),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+              );
+
+              return isNarrow
+                  ? Column(
+                      children: [
+                        staffField,
+                        const SizedBox(height: 10),
+                        parkingField,
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(child: staffField),
+                        const SizedBox(width: 12),
+                        Expanded(child: parkingField),
+                      ],
+                    );
+            },
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: regLat,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                  decoration: const InputDecoration(labelText: 'Facility Latitude', prefixIcon: Icon(Icons.pin_drop_outlined)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: regLon,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                  decoration: const InputDecoration(labelText: 'Facility Longitude', prefixIcon: Icon(Icons.explore_outlined)),
-                ),
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 460;
+              final latField = TextField(
+                controller: regLat,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                decoration: const InputDecoration(labelText: 'Facility Latitude', prefixIcon: Icon(Icons.pin_drop_outlined)),
+              );
+              final lonField = TextField(
+                controller: regLon,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                decoration: const InputDecoration(labelText: 'Facility Longitude', prefixIcon: Icon(Icons.explore_outlined)),
+              );
+
+              return isNarrow
+                  ? Column(
+                      children: [
+                        latField,
+                        const SizedBox(height: 10),
+                        lonField,
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(child: latField),
+                        const SizedBox(width: 10),
+                        Expanded(child: lonField),
+                      ],
+                    );
+            },
           ),
 
           if (error != null) ...[
