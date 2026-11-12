@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -913,46 +912,47 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
     );
   }
 
-  Widget _buildLiveTimeBadge() {
-    final now = DateTime.now();
-    final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
-    final min = now.minute.toString().padLeft(2, '0');
-    final sec = now.second.toString().padLeft(2, '0');
-    final ampm = now.hour >= 12 ? 'PM' : 'AM';
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    final dateStr = '${now.day.toString().padLeft(2, '0')} ${months[now.month - 1]} ${now.year}';
-    final timeStr = '$hour:$min:$sec $ampm';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F1E36),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF1E3A8A)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(
-              color: onDuty ? LuxuryTheme.green : LuxuryTheme.amber,
-              shape: BoxShape.circle,
+  // Executive Profile Button Widget at the right corner
+  Widget _buildProfileButton() {
+    final off = officer ?? {};
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PoliceProfilePage(
+              officer: off,
+              onDuty: onDuty,
+              onToggleDuty: (v) => setState(() => onDuty = v),
+              onRefresh: _load,
+              onLogout: widget.onLogout,
             ),
           ),
-          const SizedBox(width: 6),
-          Text(
-            'LIVE  $timeStr • $dateStr',
-            style: const TextStyle(
-              color: Color(0xFFE2E8F0),
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.w800,
-              fontSize: 11,
-              letterSpacing: 0.5,
+        );
+      },
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: LuxuryTheme.blue.withValues(alpha: .10),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: LuxuryTheme.blue.withValues(alpha: .25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.account_circle_rounded, color: LuxuryTheme.blue, size: 22),
+            SizedBox(width: 6),
+            Text(
+              'Profile',
+              style: TextStyle(
+                color: LuxuryTheme.blue,
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1018,35 +1018,17 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                                           ),
                                         ),
                                         IconButton(
-                                          tooltip: 'Officer Profile',
-                                          icon: const Icon(Icons.account_circle_rounded, color: LuxuryTheme.ink, size: 26),
-                                          onPressed: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (_) => PoliceProfilePage(
-                                                  officer: off,
-                                                  onDuty: onDuty,
-                                                  onToggleDuty: (v) => setState(() => onDuty = v),
-                                                  onRefresh: _load,
-                                                  onLogout: widget.onLogout,
-                                                ),
-                                              ),
-                                            );
-                                          },
+                                          tooltip: 'Refresh',
+                                          icon: const Icon(Icons.refresh_rounded, color: LuxuryTheme.ink, size: 22),
+                                          onPressed: _load,
                                         ),
-                                        IconButton(
-                                          tooltip: 'Sign out',
-                                          icon: const Icon(Icons.logout_rounded, color: LuxuryTheme.ink, size: 22),
-                                          onPressed: widget.onLogout,
-                                        ),
+                                        // Profile function placed at the right corner
+                                        _buildProfileButton(),
                                       ],
                                     ),
                                     const SizedBox(height: 10),
                                     Row(
                                       children: [
-                                        _buildLiveTimeBadge(),
-                                        const Spacer(),
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                                           decoration: BoxDecoration(
@@ -1074,11 +1056,6 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                                           value: onDuty,
                                           onChanged: busy ? null : _toggleDuty,
                                           activeThumbColor: LuxuryTheme.green,
-                                        ),
-                                        IconButton(
-                                          tooltip: 'Refresh',
-                                          icon: const Icon(Icons.refresh_rounded, color: LuxuryTheme.ink, size: 22),
-                                          onPressed: _load,
                                         ),
                                       ],
                                     ),
@@ -1136,41 +1113,20 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                                     ),
                                   ),
                                   const SizedBox(width: 10),
-                                  _buildLiveTimeBadge(),
-                                  const SizedBox(width: 10),
                                   Switch(
                                     value: onDuty,
                                     onChanged: busy ? null : _toggleDuty,
                                     activeThumbColor: LuxuryTheme.green,
                                   ),
-                                  IconButton(
-                                    tooltip: 'Officer Profile',
-                                    onPressed: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => PoliceProfilePage(
-                                            officer: off,
-                                            onDuty: onDuty,
-                                            onToggleDuty: (v) => setState(() => onDuty = v),
-                                            onRefresh: _load,
-                                            onLogout: widget.onLogout,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    icon: const Icon(Icons.account_circle_rounded, color: LuxuryTheme.ink, size: 26),
-                                  ),
+                                  const SizedBox(width: 4),
                                   IconButton(
                                     tooltip: 'Refresh',
                                     onPressed: _load,
                                     icon: const Icon(Icons.refresh_rounded, color: LuxuryTheme.ink),
                                   ),
-                                  IconButton(
-                                    tooltip: 'Sign out',
-                                    onPressed: widget.onLogout,
-                                    icon: const Icon(Icons.logout_rounded, color: LuxuryTheme.ink),
-                                  ),
+                                  const SizedBox(width: 6),
+                                  // Profile function placed at the right corner
+                                  _buildProfileButton(),
                                 ],
                               );
                             },

@@ -336,30 +336,6 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
     } catch (_) {}
   }
 
-  Future<void> _saveAvailability() async {
-    setState(() => saving = true);
-    try {
-      await api.put('/coordination/hospital/availability', {
-        'emergency_available': emergencyAvailable,
-        'icu_beds_available': int.tryParse(icu.text) ?? 0,
-        'emergency_beds_available': int.tryParse(erBeds.text) ?? 0,
-        'ventilators_available': int.tryParse(vents.text) ?? 0,
-        'oxygen_cylinders_available': int.tryParse(o2Cylinders.text) ?? 20,
-        'oxygen_available': oxygenAvailable,
-        'trauma_capable': traumaCapable,
-        'cardiac_capable': cardiacCapable,
-      });
-      if (mounted) setState(() => availabilityDirty = false);
-      _toast(
-          'Hospital capacity updated: ${icu.text} ICU Beds, ${o2Cylinders.text} O₂ Cylinders.', LuxuryTheme.green);
-      await _load();
-    } catch (e) {
-      _toast(e.toString().replaceFirst('Exception: ', ''), LuxuryTheme.red);
-    } finally {
-      if (mounted) setState(() => saving = false);
-    }
-  }
-
   Future<void> _respond(String decision, {Map<String, dynamic>? request}) async {
     final item = request ?? selected;
     if (item == null) return;
@@ -714,103 +690,6 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
     }
   }
 
-  Future<void> _showCapacityEditor() async {
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Facility readiness', style: TextStyle(fontWeight: FontWeight.w900)),
-          content: SizedBox(
-            width: 460,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    value: emergencyAvailable,
-                    onChanged: (value) {
-                      setState(() {
-                        emergencyAvailable = value;
-                        availabilityDirty = true;
-                      });
-                      setDialogState(() {});
-                    },
-                    title: const Text('Accepting emergency arrivals'),
-                    activeThumbColor: LuxuryTheme.green,
-                  ),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Expanded(child: _numberField('ICU beds', icu, _icuFocus)),
-                    const SizedBox(width: 8),
-                    Expanded(child: _numberField('O₂ cylinders', o2Cylinders, _o2Focus)),
-                    const SizedBox(width: 8),
-                    Expanded(child: _numberField('ER beds', erBeds, _erFocus)),
-                    const SizedBox(width: 8),
-                    Expanded(child: _numberField('Ventilators', vents, _ventsFocus)),
-                  ]),
-                  const SizedBox(height: 10),
-                  StatefulBuilder(
-                    builder: (context, setChips) => Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: [
-                        FilterChip(
-                            label: const Text('Oxygen'),
-                            selected: oxygenAvailable,
-                            onSelected: (v) {
-                              setState(() {
-                                oxygenAvailable = v;
-                                availabilityDirty = true;
-                              });
-                              setChips(() {});
-                            }),
-                        FilterChip(
-                            label: const Text('Trauma'),
-                            selected: traumaCapable,
-                            onSelected: (v) {
-                              setState(() {
-                                traumaCapable = v;
-                                availabilityDirty = true;
-                              });
-                              setChips(() {});
-                            }),
-                        FilterChip(
-                            label: const Text('Cardiac'),
-                            selected: cardiacCapable,
-                            onSelected: (v) {
-                              setState(() {
-                                cardiacCapable = v;
-                                availabilityDirty = true;
-                              });
-                              setChips(() {});
-                            }),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-            FilledButton.icon(
-              onPressed: saving
-                  ? null
-                  : () async {
-                      await _saveAvailability();
-                      if (mounted) Navigator.pop(dialogContext);
-                    },
-              icon: const Icon(Icons.save_rounded),
-              label: Text(saving ? 'Saving…' : 'Save capacity'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _showHospitalAccountDialog() async {
     final h = hospital ?? {};
     final res = (h['resources'] is Map ? Map<String, dynamic>.from(h['resources']) : <String, dynamic>{});
@@ -1015,6 +894,17 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
             ),
           ),
           actions: [
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _confirmSignOut();
+              },
+              icon: const Icon(Icons.logout_rounded, color: LuxuryTheme.red, size: 16),
+              label: const Text('Sign Out', style: TextStyle(color: LuxuryTheme.red, fontWeight: FontWeight.w700)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFFECDD3)),
+              ),
+            ),
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
             FilledButton.icon(
               onPressed: saving
@@ -1060,151 +950,6 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildAccountOverviewCard(Map<String, dynamic> h) {
-    final res = h['resources'] is Map ? Map<String, dynamic>.from(h['resources']) : <String, dynamic>{};
-    return CommandCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF0F1E36), Color(0xFF1E3A8A)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.health_and_safety_rounded, color: Color(0xFF38BDF8), size: 24),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text('Hospital Account & Facility Records',
-                        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: LuxuryTheme.ink)),
-                    Text('Registered legal identity, clinical capabilities, and emergency inventory.',
-                        style: TextStyle(color: LuxuryTheme.muted, fontSize: 11)),
-                  ],
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: _showHospitalAccountDialog,
-                icon: const Icon(Icons.edit_note_rounded, size: 18),
-                label: const Text('Manage Records'),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: LuxuryTheme.line),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Divider(height: 1),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 20,
-            runSpacing: 12,
-            children: [
-              _accountRecordItem('GST NUMBER (GSTIN)', h['gst_number'] ?? '—',
-                  icon: Icons.verified_rounded, isVerified: h['gst_verified'] != false),
-              _accountRecordItem('SPECIALTIES', h['specialties'] ?? 'Multi-Specialty Emergency Care',
-                  icon: Icons.medical_services_outlined),
-              _accountRecordItem('STAFF ON DUTY', '${h['staff_count'] ?? 25} Personnel',
-                  icon: Icons.people_outline),
-              _accountRecordItem('AMBULANCE PARKING',
-                  (h['parking_available'] != false) ? 'Dedicated Bay Available' : 'No Dedicated Bay',
-                  icon: Icons.local_parking_rounded),
-              _accountRecordItem('ADMINISTRATOR',
-                  '${h['admin_name'] ?? h['full_name'] ?? 'Superintendent'} (${h['admin_email'] ?? h['email'] ?? 'admin'})',
-                  icon: Icons.admin_panel_settings_outlined),
-              _accountRecordItem('EMERGENCY HOTLINE', h['admin_phone'] ?? h['phone'] ?? '+91 80 2297 5000',
-                  icon: Icons.phone_in_talk_outlined),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: LuxuryTheme.bg,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: LuxuryTheme.line),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                    child: _inventoryStat(
-                        'ICU BEDS', '${res['icu_beds_available'] ?? icu.text}', Icons.bed_rounded, LuxuryTheme.blue)),
-                Container(width: 1, height: 32, color: LuxuryTheme.line),
-                Expanded(
-                    child: _inventoryStat('O₂ CYLINDERS', '${res['oxygen_cylinders_available'] ?? o2Cylinders.text}',
-                        Icons.gas_meter_outlined, const Color(0xFF00897B))),
-                Container(width: 1, height: 32, color: LuxuryTheme.line),
-                Expanded(
-                    child: _inventoryStat('ER BEDS', '${res['emergency_beds_available'] ?? erBeds.text}',
-                        Icons.hotel_rounded, LuxuryTheme.ink)),
-                Container(width: 1, height: 32, color: LuxuryTheme.line),
-                Expanded(
-                    child: _inventoryStat('VENTILATORS', '${res['ventilators_available'] ?? vents.text}',
-                        Icons.air_rounded, Colors.deepPurple)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _accountRecordItem(String label, String value, {IconData? icon, bool isVerified = false}) {
-    return SizedBox(
-      width: 250,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              if (icon != null) ...[Icon(icon, size: 12, color: LuxuryTheme.muted), const SizedBox(width: 4)],
-              Text(label,
-                  style: const TextStyle(
-                      color: LuxuryTheme.muted, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
-              if (isVerified) ...[
-                const SizedBox(width: 4),
-                const Icon(Icons.check_circle, size: 10, color: LuxuryTheme.green),
-              ],
-            ],
-          ),
-          const SizedBox(height: 3),
-          Text(value,
-              style: const TextStyle(color: LuxuryTheme.ink, fontSize: 13, fontWeight: FontWeight.w800),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
-        ],
-      ),
-    );
-  }
-
-  Widget _inventoryStat(String label, String count, IconData icon, Color color) {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 4),
-            Text(count, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: color)),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: LuxuryTheme.muted)),
-      ],
     );
   }
 
@@ -1668,103 +1413,33 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                 ])));
   }
 
-  // Prominent Executive Hospital Account Button Widget
-  Widget _buildHospitalAccountButton() {
+  // Executive Profile Button Widget at the right corner
+  Widget _buildProfileButton() {
     return InkWell(
       onTap: _showHospitalAccountDialog,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(24),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF0F1E36), Color(0xFF1E3A8A)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFF3B82F6).withValues(alpha: .5)),
-          boxShadow: const [
-            BoxShadow(color: Color(0x33000000), blurRadius: 10, offset: Offset(0, 3)),
-          ],
+          color: LuxuryTheme.blue.withValues(alpha: .10),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: LuxuryTheme.blue.withValues(alpha: .25)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: .15),
-                borderRadius: BorderRadius.circular(10),
+          children: const [
+            Icon(Icons.account_circle_rounded, color: LuxuryTheme.blue, size: 22),
+            SizedBox(width: 6),
+            Text(
+              'Profile',
+              style: TextStyle(
+                color: LuxuryTheme.blue,
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
               ),
-              child: const Icon(Icons.health_and_safety_rounded, color: Color(0xFF38BDF8), size: 20),
             ),
-            const SizedBox(width: 9),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Text('HOSPITAL ACCOUNT',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.6)),
-                    SizedBox(width: 4),
-                    Icon(Icons.verified_rounded, color: Color(0xFF38BDF8), size: 12),
-                  ],
-                ),
-                const SizedBox(height: 1),
-                Text('Manage Records & Inventory',
-                    style: TextStyle(color: Colors.white.withValues(alpha: .75), fontSize: 9, fontWeight: FontWeight.w600)),
-              ],
-            ),
-            const SizedBox(width: 8),
-            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 11),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildLiveTimeBadge() {
-    final now = DateTime.now();
-    final hour = now.hour % 12 == 0 ? 12 : now.hour % 12;
-    final min = now.minute.toString().padLeft(2, '0');
-    final sec = now.second.toString().padLeft(2, '0');
-    final ampm = now.hour >= 12 ? 'PM' : 'AM';
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    final dateStr = '${now.day.toString().padLeft(2, '0')} ${months[now.month - 1]} ${now.year}';
-    final timeStr = '$hour:$min:$sec $ampm';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F1E36),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF1E3A8A)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: const BoxDecoration(
-              color: Color(0xFF22C55E),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            'LIVE  $timeStr • $dateStr',
-            style: const TextStyle(
-              color: Color(0xFFE2E8F0),
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.w800,
-              fontSize: 11,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1829,21 +1504,20 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                             ],
                                           ),
                                         ),
-                                        _buildHospitalAccountButton(),
                                         IconButton(
-                                          tooltip: 'Sign out',
-                                          icon: const Icon(Icons.logout_rounded, color: LuxuryTheme.ink, size: 22),
-                                          onPressed: _confirmSignOut,
+                                          tooltip: 'Refresh',
+                                          icon: const Icon(Icons.refresh_rounded, color: LuxuryTheme.ink, size: 22),
+                                          onPressed: _load,
                                         ),
+                                        // Profile function placed at the right corner
+                                        _buildProfileButton(),
                                       ],
                                     ),
-                                    const SizedBox(height: 10),
+                                    const SizedBox(height: 8),
                                     Row(
                                       children: [
-                                        _buildLiveTimeBadge(),
-                                        const Spacer(),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                                           decoration: BoxDecoration(
                                             color: LuxuryTheme.green.withValues(alpha: .10),
                                             borderRadius: BorderRadius.circular(99),
@@ -1860,16 +1534,20 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                             ],
                                           ),
                                         ),
-                                        IconButton(
-                                          tooltip: 'Facility capacity',
-                                          icon: const Icon(Icons.tune_rounded, color: LuxuryTheme.ink, size: 22),
-                                          onPressed: _showCapacityEditor,
-                                        ),
-                                        IconButton(
-                                          tooltip: 'Refresh',
-                                          icon: const Icon(Icons.refresh_rounded, color: LuxuryTheme.ink, size: 22),
-                                          onPressed: _load,
-                                        ),
+                                        if (h['gst_number'] != null) ...[
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: LuxuryTheme.blue.withValues(alpha: .12),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              'GST: ${h['gst_number']}',
+                                              style: const TextStyle(color: LuxuryTheme.blue, fontWeight: FontWeight.w800, fontSize: 10),
+                                            ),
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   ],
@@ -1936,26 +1614,15 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(width: 10),
-                                  _buildLiveTimeBadge(),
-                                  const SizedBox(width: 10),
-                                  _buildHospitalAccountButton(),
                                   const SizedBox(width: 8),
-                                  IconButton(
-                                    tooltip: 'Facility capacity',
-                                    onPressed: _showCapacityEditor,
-                                    icon: const Icon(Icons.tune_rounded, color: LuxuryTheme.ink),
-                                  ),
                                   IconButton(
                                     tooltip: 'Refresh',
                                     onPressed: _load,
                                     icon: const Icon(Icons.refresh_rounded, color: LuxuryTheme.ink),
                                   ),
-                                  IconButton(
-                                    tooltip: 'Sign out',
-                                    onPressed: _confirmSignOut,
-                                    icon: const Icon(Icons.logout_rounded, color: LuxuryTheme.ink),
-                                  ),
+                                  const SizedBox(width: 4),
+                                  // Profile function placed at the right corner
+                                  _buildProfileButton(),
                                 ],
                               );
                             },
@@ -2219,18 +1886,9 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                               ],
                             ]);
 
-                            final accountCard = _buildAccountOverviewCard(h);
-
                             if (!hasActiveRequests || activeFilter == 'HISTORY') {
                               // NO ACTIVE AMBULANCE REQUESTS (or in History view): DO NOT SHOW MAP!
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  requestList,
-                                  const SizedBox(height: 18),
-                                  accountCard,
-                                ],
-                              );
+                              return requestList;
                             }
 
                             // ACTIVE INCOMING REQUESTS: SHOW MAP PANEL!
@@ -2254,46 +1912,19 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                               else
                                 _map(),
                               if (r != null) ...[const SizedBox(height: 10), _selectedRequestDetails(r)],
-                              const SizedBox(height: 10),
-                              CommandCard(
-                                  padding: const EdgeInsets.all(13),
-                                  child: Row(children: [
-                                    const Icon(Icons.health_and_safety_rounded, color: LuxuryTheme.green, size: 23),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                      const Text('Facility readiness',
-                                          style: TextStyle(color: LuxuryTheme.ink, fontWeight: FontWeight.w900)),
-                                      Text(
-                                          emergencyAvailable
-                                              ? 'Accepting emergency arrivals'
-                                              : 'Not accepting arrivals right now',
-                                          style: const TextStyle(color: LuxuryTheme.muted, fontSize: 11))
-                                    ])),
-                                    TextButton(onPressed: _showCapacityEditor, child: const Text('Manage'))
-                                  ])),
                             ]);
 
                             if (constraints.maxWidth >= 1080) {
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    Expanded(flex: 7, child: requestList),
-                                    const SizedBox(width: 18),
-                                    Expanded(flex: 5, child: mapPanel)
-                                  ]),
-                                  const SizedBox(height: 18),
-                                  accountCard,
-                                ],
-                              );
+                              return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Expanded(flex: 7, child: requestList),
+                                const SizedBox(width: 18),
+                                Expanded(flex: 5, child: mapPanel),
+                              ]);
                             }
                             return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                               requestList,
                               const SizedBox(height: 18),
                               mapPanel,
-                              const SizedBox(height: 18),
-                              accountCard
                             ]);
                           }),
                           const SizedBox(height: 15),
@@ -2534,15 +2165,6 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
       ),
     );
   }
-
-  Widget _numberField(String label, TextEditingController controller, FocusNode focusNode) => TextField(
-      focusNode: focusNode,
-      controller: controller,
-      onChanged: (_) {
-        availabilityDirty = true;
-      },
-      keyboardType: TextInputType.number,
-      decoration: InputDecoration(labelText: label, contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12)));
 
   Widget _info(String label, String value) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: const TextStyle(color: LuxuryTheme.muted, fontSize: 9, fontWeight: FontWeight.w900)),
