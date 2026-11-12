@@ -1,49 +1,76 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
+class RedCrossLogo extends StatelessWidget {
+  final double size;
+  const RedCrossLogo({super.key, this.size = 28});
+
+  @override
+  Widget build(BuildContext context) {
+    final barW = size * 0.36;
+    final barH = size;
+    final r = Radius.circular(size * 0.16);
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: barW,
+            height: barH,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+              ),
+              borderRadius: BorderRadius.all(r),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x33DC2626),
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: barH,
+            height: barW,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+              ),
+              borderRadius: BorderRadius.all(r),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class Brand extends StatelessWidget {
   final bool compact;
   const Brand({super.key, this.compact = false});
 
   @override
   Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: compact ? 42 : 52,
-            height: compact ? 42 : 52,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: const LinearGradient(
-                colors: [AppTheme.red, AppTheme.blue],
-              ),
-              boxShadow: const [
-                BoxShadow(color: Color(0x220A63FF), blurRadius: 20),
-              ],
-            ),
-            child: Icon(
-              Icons.monitor_heart_rounded,
-              color: Colors.white,
-              size: compact ? 24 : 30,
-            ),
-          ),
-          const SizedBox(width: 11),
-          Text.rich(
-            TextSpan(
-              children: [
-                const TextSpan(
-                  text: 'Rescu',
-                  style: TextStyle(color: AppTheme.ink),
-                ),
-                const TextSpan(
-                  text: 'Path',
-                  style: TextStyle(color: AppTheme.red),
-                ),
-              ],
-            ),
+          RedCrossLogo(size: compact ? 26 : 30),
+          const SizedBox(width: 9),
+          Text(
+            'RescuPath',
             style: TextStyle(
-              fontSize: compact ? 19 : 24,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -.8,
+              color: const Color(0xFF0F172A),
+              fontSize: compact ? 21 : 25,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.6,
             ),
           ),
         ],
@@ -114,27 +141,74 @@ class BottomNav extends StatelessWidget {
   const BottomNav({super.key, required this.index, required this.onTap});
 
   @override
-  Widget build(BuildContext context) => NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: onTap,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.emergency_outlined),
-            selectedIcon: Icon(Icons.emergency),
-            label: 'Emergency',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profile',
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFF1F5F9), width: 1.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x0F0F172A),
+            blurRadius: 16,
+            offset: Offset(0, -4),
           ),
         ],
-      );
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(0, Icons.home_rounded, Icons.home_outlined, 'Home'),
+              _buildNavItem(1, Icons.emergency_rounded, Icons.emergency_outlined, 'Emergency'),
+              _buildNavItem(2, Icons.person_rounded, Icons.person_outline_rounded, 'Profile'),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int itemIndex, IconData activeIcon, IconData inactiveIcon, String label) {
+    final isSelected = index == itemIndex;
+    return InkWell(
+      onTap: () => onTap(itemIndex),
+      splashColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      child: SizedBox(
+        width: 72,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 54,
+              height: 30,
+              decoration: BoxDecoration(
+                color: isSelected ? const Color(0xFF0A2540) : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(
+                isSelected ? activeIcon : inactiveIcon,
+                color: isSelected ? Colors.white : const Color(0xFF64748B),
+                size: 20,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected ? const Color(0xFF0A2540) : const Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class ActionTile extends StatelessWidget {

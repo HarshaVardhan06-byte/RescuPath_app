@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/services/location_service.dart';
@@ -10,8 +9,13 @@ import '../emergency/hospital_navigation_page.dart';
 class HospitalSelectionPage extends StatefulWidget {
   final String emergencyId;
   final String initialSeverity;
-  const HospitalSelectionPage({super.key, required this.emergencyId, this.initialSeverity = 'HIGH'});
-  @override State<HospitalSelectionPage> createState() => _HospitalSelectionPageState();
+  const HospitalSelectionPage({
+    super.key,
+    required this.emergencyId,
+    this.initialSeverity = 'HIGH',
+  });
+  @override
+  State<HospitalSelectionPage> createState() => _HospitalSelectionPageState();
 }
 
 class _HospitalSelectionPageState extends State<HospitalSelectionPage> {
@@ -24,13 +28,21 @@ class _HospitalSelectionPageState extends State<HospitalSelectionPage> {
   bool loading = true;
   String? error;
   String? selectingHospitalId;
+  String? selectedHospitalId;
+  int filterIndex = 0; // 0: Recommended, 1: Nearest, 2: Available
 
-  @override void initState() { super.initState(); load(); }
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
 
   Future<void> load() async {
-    setState(() { loading = true; error = null; });
+    setState(() {
+      loading = true;
+      error = null;
+    });
     try {
-      // Fetch emergency details and hospital recommendations in parallel for maximum speed
       final results = await Future.wait([
         api.get('/emergencies/${widget.emergencyId}'),
         api.get('/emergencies/${widget.emergencyId}/hospital-recommendations?radius_km=15'),
@@ -40,10 +52,15 @@ class _HospitalSelectionPageState extends State<HospitalSelectionPage> {
       final result = results[1];
 
       if (!mounted) return;
-      var list = result is List ? result.whereType<Map>().map((x) => Map<String, dynamic>.from(x)).toList() : <Map<String, dynamic>>[];
+      var list = result is List
+          ? result.whereType<Map>().map((x) => Map<String, dynamic>.from(x)).toList()
+          : <Map<String, dynamic>>[];
+
       if (list.isEmpty) {
         try {
-          final fallback = await api.get('/emergencies/${widget.emergencyId}/hospital-recommendations?radius_km=5000');
+          final fallback = await api.get(
+            '/emergencies/${widget.emergencyId}/hospital-recommendations?radius_km=5000',
+          );
           if (fallback is List && fallback.isNotEmpty) {
             list = fallback.whereType<Map>().map((x) => Map<String, dynamic>.from(x)).toList();
           }
@@ -53,9 +70,11 @@ class _HospitalSelectionPageState extends State<HospitalSelectionPage> {
       setState(() {
         emergency = Map<String, dynamic>.from(e as Map);
         hospitals = list;
+        if (list.isNotEmpty && selectedHospitalId == null) {
+          selectedHospitalId = list.first['hospital_id']?.toString() ?? list.first['id']?.toString();
+        }
       });
 
-      // Update location asynchronously in background without blocking screen render
       location.currentPosition().then((p) {
         if (mounted) {
           latitude = p.latitude;
@@ -69,16 +88,57 @@ class _HospitalSelectionPageState extends State<HospitalSelectionPage> {
           'heading_degrees': p.heading,
         }).catchError((_) => null);
       }).catchError((_) => null);
-
     } catch (e) {
-      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      }
     } finally {
       if (mounted) setState(() => loading = false);
     }
   }
 
+  List<Map<String, dynamic>> get _sortedHospitals {
+    final list = List<Map<String, dynamic>>.from(hospitals);
+    if (filterIndex == 1) {
+      // Nearest
+      list.sort((a, b) {
+        final dA = (a['distance_km'] is num) ? (a['distance_km'] as num).toDouble() : 999.0;
+        final dB = (b['distance_km'] is num) ? (b['distance_km'] as num).toDouble() : 999.0;
+        return dA.compareTo(dB);
+      });
+    } else if (filterIndex == 2) {
+      // Available (ICU beds desc)
+      list.sort((a, b) {
+        final bA = (a['icu_beds_available'] is num) ? (a['icu_beds_available'] as num).toInt() : 0;
+        final bB = (b['icu_beds_available'] is num) ? (b['icu_beds_available'] as num).toInt() : 0;
+        return bB.compareTo(bA);
+      });
+    } else {
+      // Recommended (by rank / score)
+      list.sort((a, b) {
+        final rA = (a['rank'] is num) ? (a['rank'] as num).toInt() : 99;
+        final rB = (b['rank'] is num) ? (b['rank'] as num).toInt() : 99;
+        return rA.compareTo(rB);
+      });
+    }
+    return list;
+  }
+
+  Map<String, dynamic>? get _selectedHospital {
+    if (hospitals.isEmpty) return null;
+    if (selectedHospitalId == null) return hospitals.first;
+    try {
+      return hospitals.firstWhere(
+        (h) => (h['hospital_id']?.toString() ?? h['id']?.toString()) == selectedHospitalId,
+        orElse: () => hospitals.first,
+      );
+    } catch (_) {
+      return hospitals.first;
+    }
+  }
+
   Future<void> _useHospital(Map<String, dynamic> hospital) async {
-    final id = hospital['hospital_id']?.toString();
+    final id = hospital['hospital_id']?.toString() ?? hospital['id']?.toString();
     if (id == null || id.isEmpty) return;
     setState(() => selectingHospitalId = id);
     try {
@@ -88,225 +148,565 @@ class _HospitalSelectionPageState extends State<HospitalSelectionPage> {
       });
       if (!mounted) return;
       setState(() => selectingHospitalId = null);
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => HospitalNavigationPage(emergencyId: widget.emergencyId, hospital: hospital, assignedEmergency: Map<String, dynamic>.from(assigned), initialSeverity: widget.initialSeverity)));
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => HospitalNavigationPage(
+            emergencyId: widget.emergencyId,
+            hospital: hospital,
+            assignedEmergency: Map<String, dynamic>.from(assigned),
+            initialSeverity: widget.initialSeverity,
+          ),
+        ),
+      );
       if (mounted) setState(() => selectingHospitalId = null);
     } catch (e) {
-      if (mounted) { setState(() => selectingHospitalId = null); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '')))); }
+      if (mounted) {
+        setState(() => selectingHospitalId = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
     }
-  }
-
-  Future<void> _previewHospital(Map<String, dynamic> hospital) async {
-    final lat = hospital['latitude']; final lng = hospital['longitude'];
-    if (lat is! num || lng is! num) return;
-    final uri = Uri.https('www.google.com', '/maps/dir/', {'api': '1', 'destination': '${lat.toDouble()},${lng.toDouble()}', 'travelmode': 'driving'});
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
   Widget build(BuildContext context) {
-    final topThree = hospitals.where((h) => h['is_top_match'] == true).toList();
-    final remaining = hospitals.where((h) => h['is_top_match'] != true).toList();
-    final effectiveTopThree = topThree.isNotEmpty ? topThree : hospitals.take(3).toList();
-    final effectiveRemaining = topThree.isNotEmpty ? remaining : hospitals.skip(3).toList();
+    final conditionText = (emergency?['condition']?.toString() ??
+            (hospitals.isNotEmpty ? hospitals.first['condition']?.toString() : null) ??
+            'Cardiac')
+        .replaceAll('_', ' ');
+    final severityText = (emergency?['severity']?.toString() ?? widget.initialSeverity).toUpperCase();
+
+    final sortedList = _sortedHospitals;
+    final selectedHospital = _selectedHospital;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Emergency Destination', style: TextStyle(fontWeight: FontWeight.w900)),
-        actions: [IconButton(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded))],
-      ),
-      body: loading
-          ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 12), Text('Matching best specialized hospitals…', style: TextStyle(color: AppTheme.muted, fontWeight: FontWeight.w600))]))
-          : error != null
-              ? Center(child: Padding(padding: const EdgeInsets.all(24), child: SurfaceCard(child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.location_off_rounded, color: AppTheme.red, size: 42), const SizedBox(height: 12), Text(error!, textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.muted)), const SizedBox(height: 12), PrimaryButton(label: 'Retry', icon: Icons.refresh_rounded, outlined: true, background: AppTheme.blue, onPressed: load)]))))
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 30),
-                  children: [
-                    PageHeader(
-                      eyebrow: 'Clinical triage & routing',
-                      title: 'Select Destination Hospital',
-                      subtitle: 'Hospitals are evaluated based on patient condition, medical specialty, and emergency transit time.',
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Top App Bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 16, 4),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: Color(0xFF0F172A),
+                      size: 24,
                     ),
-                    const SizedBox(height: 16),
-                    SurfaceCard(
-                      gradient: const [Color(0xFFFFEEF0), Color(0xFFFFFFFF)],
-                      child: Row(children: [
-                        Container(width: 44, height: 44, decoration: BoxDecoration(color: AppTheme.red.withValues(alpha: .11), borderRadius: BorderRadius.circular(15)), child: const Icon(Icons.emergency_rounded, color: AppTheme.red)),
-                        const SizedBox(width: 11),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          const Text('Patient condition', style: TextStyle(color: AppTheme.ink, fontWeight: FontWeight.w900)),
-                          Text('${emergency?['severity'] ?? widget.initialSeverity} • ${hospitals.isNotEmpty ? hospitals.first['condition']?.toString().replaceAll('_', ' ') : 'EMERGENCY'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.muted, fontSize: 11)),
-                        ])),
-                        const SizedBox(width: 8),
-                        const StatusChip('SPECIALTY MATCH', color: AppTheme.green),
-                      ]),
-                    ),
-                    const SizedBox(height: 18),
-                    if (hospitals.isEmpty)
-                      const SurfaceCard(child: Text('No emergency hospitals found in range. Please retry or expand radius.', style: TextStyle(color: AppTheme.muted)))
-                    else ...[
-                      // Section 1: TOP 3 MATCHES
-                      Row(children: [
-                        const Icon(Icons.workspace_premium_rounded, color: Color(0xFFE6A100), size: 20),
-                        const SizedBox(width: 8),
-                        Text('TOP 3 SPECIALTY MATCHES', style: TextStyle(color: AppTheme.ink.withValues(alpha: .85), fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)),
-                      ]),
-                      const SizedBox(height: 8),
-                      ...effectiveTopThree.map((h) => _buildHospitalCard(h, isTopRank: true)),
-
-                      if (effectiveRemaining.isNotEmpty) ...[
-                        const SizedBox(height: 18),
-                        Row(children: [
-                          const Icon(Icons.local_hospital_rounded, color: AppTheme.blue, size: 20),
-                          const SizedBox(width: 8),
-                          Text('OTHER NEARBY HOSPITALS (${effectiveRemaining.length})', style: TextStyle(color: AppTheme.ink.withValues(alpha: .85), fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)),
-                        ]),
-                        const SizedBox(height: 8),
-                        ...effectiveRemaining.map((h) => _buildHospitalCard(h, isTopRank: false)),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'Select Destination Hospital',
+                          style: TextStyle(
+                            color: Color(0xFF0F172A),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.4,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Hospitals are recommended based on patient condition, specialty and ETA.',
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 11,
+                            height: 1.3,
+                          ),
+                        ),
                       ],
-                    ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Content Body
+            Expanded(
+              child: loading
+                  ? const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(color: Color(0xFF2563EB)),
+                          SizedBox(height: 12),
+                          Text(
+                            'Matching best specialized hospitals…',
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : error != null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: SurfaceCard(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.location_off_rounded,
+                                    color: AppTheme.red,
+                                    size: 42,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    error!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: AppTheme.muted),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  PrimaryButton(
+                                    label: 'Retry',
+                                    icon: Icons.refresh_rounded,
+                                    outlined: true,
+                                    background: AppTheme.blue,
+                                    onPressed: load,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        )
+                      : ListView(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+                          children: [
+                            // Patient Condition Card (matches reference image)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF1F2),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: const Color(0xFFFECDD3),
+                                  width: 1.0,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFFEF4444),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.monitor_heart_rounded,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Patient Condition',
+                                          style: TextStyle(
+                                            color: Color(0xFF0F172A),
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '$severityText • $conditionText',
+                                          style: const TextStyle(
+                                            color: Color(0xFFDC2626),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Filter Tabs: Recommended, Nearest, Available
+                            Row(
+                              children: [
+                                _buildFilterTab(0, 'Recommended'),
+                                const SizedBox(width: 8),
+                                _buildFilterTab(1, 'Nearest'),
+                                const SizedBox(width: 8),
+                                _buildFilterTab(2, 'Available'),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Hospital Cards
+                            if (sortedList.isEmpty)
+                              Container(
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: const Center(
+                                  child: Text(
+                                    'No hospitals found within range. Please expand range or retry.',
+                                    style: TextStyle(color: Color(0xFF64748B)),
+                                  ),
+                                ),
+                              )
+                            else
+                              ...sortedList.map((h) => _buildHospitalCard(h)),
+                          ],
+                        ),
+            ),
+
+            // Bottom Sticky "Proceed to Navigation >" Action Bar
+            if (!loading && sortedList.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(top: BorderSide(color: Color(0xFFF1F5F9), width: 1.5)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x0C0F172A),
+                      blurRadius: 16,
+                      offset: Offset(0, -4),
+                    ),
                   ],
                 ),
+                child: SizedBox(
+                  height: 52,
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: selectedHospital != null && selectingHospitalId == null
+                        ? () => _useHospital(selectedHospital)
+                        : null,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF0A2540),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          selectingHospitalId != null
+                              ? 'Opening navigation…'
+                              : 'Proceed to Navigation',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 22,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildHospitalCard(Map<String, dynamic> h, {required bool isTopRank}) {
-    final rank = h['rank'] ?? 0;
-    final id = h['hospital_id']?.toString();
-    final selected = selectingHospitalId == id;
-    final profile = h['route_profile']?.toString();
-    final profileColor = profile == 'comfort_priority' ? AppTheme.purple : profile == 'traffic_priority' ? AppTheme.red : AppTheme.blue;
-    final matchPct = h['match_percentage'] ?? h['rank_score'];
-    final badge = h['specialty_badge']?.toString() ?? (isTopRank ? 'PREMIER MATCH' : 'NEARBY FACILITY');
+  Widget _buildFilterTab(int index, String label) {
+    final isSelected = filterIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() => filterIndex = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF0A2540) : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : const Color(0xFF64748B),
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    );
+  }
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: SurfaceCard(
-        gradient: rank == 1
-            ? const [Color(0xFFEFF7FF), Color(0xFFFFFFFF)]
-            : isTopRank
-                ? const [Color(0xFFFAFAFE), Color(0xFFFFFFFF)]
-                : null,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: rank == 1
-                    ? AppTheme.blue.withValues(alpha: .15)
-                    : isTopRank
-                        ? const Color(0xFFFFF7E6)
-                        : const Color(0xFFF0F4F8),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Text(
-                '#$rank',
-                style: TextStyle(
-                  color: rank == 1 ? AppTheme.blue : isTopRank ? const Color(0xFFD48806) : AppTheme.muted,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
-                ),
-              ),
+  Widget _buildHospitalCard(Map<String, dynamic> h) {
+    final id = h['hospital_id']?.toString() ?? h['id']?.toString() ?? '';
+    final isSelected = selectedHospitalId == id;
+    final isBestMatch = (h['rank'] == 1 || h['is_top_match'] == true);
+    final hospitalName = h['hospital_name']?.toString() ?? 'Hospital';
+    final distance = h['distance_km']?.toString() ?? '—';
+    final eta = _eta(h);
+    final icuBeds = h['icu_beds_available'] ?? 3;
+    final o2Cylinders = h['oxygen_cylinders_available'] ?? 14;
+
+    return GestureDetector(
+      onTap: () => setState(() => selectedHospitalId = id),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+            width: isSelected ? 1.8 : 1.0,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: isSelected ? const Color(0x142563EB) : const Color(0x06000000),
+              blurRadius: isSelected ? 12 : 6,
+              offset: const Offset(0, 3),
             ),
-            const SizedBox(width: 11),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(
-                  h['hospital_name']?.toString() ?? 'Hospital',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppTheme.ink, fontSize: 16, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${h['distance_km'] ?? '—'} km  •  ${_eta(h)}',
-                  style: const TextStyle(color: AppTheme.muted, fontSize: 12, fontWeight: FontWeight.w600),
-                ),
-              ]),
-            ),
-            if (matchPct != null)
-              StatusChip(
-                '$matchPct% MATCH',
-                color: rank == 1 ? AppTheme.green : isTopRank ? const Color(0xFF00796B) : AppTheme.blue,
-              ),
-          ]),
-          const SizedBox(height: 10),
-          Wrap(spacing: 6, runSpacing: 6, children: [
-            StatusChip(badge, color: isTopRank ? AppTheme.blue : const Color(0xFF718096)),
-            StatusChip(_label(profile), color: profileColor),
-            if (h['traffic_aware'] == true) const StatusChip('LIVE TRAFFIC', color: AppTheme.green),
-          ]),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Row(
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top row: Thumbnail, Title + Best Match Badge, Distance • ETA, Radio Button
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                _buildHospitalThumbnail(),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.bed_rounded, size: 16, color: AppTheme.blue),
-                      const SizedBox(width: 5),
-                      Expanded(
-                        child: Text(
-                          '${h['icu_beds_available'] ?? 12} ICU Beds',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppTheme.ink),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              hospitalName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF0F172A),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          if (isBestMatch) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2563EB),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Text(
+                                'Best Match',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$distance km  •  $eta',
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
                   ),
                 ),
-                Container(width: 1, height: 16, color: const Color(0xFFCBD5E1)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Row(
-                    children: [
-                      const Icon(Icons.air_rounded, size: 16, color: Color(0xFF00897B)),
-                      const SizedBox(width: 5),
-                      Expanded(
-                        child: Text(
-                          '${h['oxygen_cylinders_available'] ?? 20} O₂ Cylinders',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppTheme.ink),
-                        ),
-                      ),
-                    ],
+                const SizedBox(width: 8),
+
+                // Radio Button
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
+                      width: isSelected ? 2.0 : 1.5,
+                    ),
+                  ),
+                  child: isSelected
+                      ? Center(
+                          child: Container(
+                            width: 11,
+                            height: 11,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF2563EB),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        )
+                      : null,
+                ),
+              ],
+            ),
+
+            // Divider line
+            Container(
+              height: 1,
+              color: const Color(0xFFF1F5F9),
+              margin: const EdgeInsets.symmetric(vertical: 12),
+            ),
+
+            // Bottom stats row: ICU Beds and O2 Cylinders
+            Row(
+              children: [
+                const Icon(
+                  Icons.bed_rounded,
+                  size: 16,
+                  color: Color(0xFF64748B),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '$icuBeds ICU Beds',
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 20),
+                const Icon(
+                  Icons.air_rounded,
+                  size: 16,
+                  color: Color(0xFF64748B),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '$o2Cylinders O₂ Cylinders',
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            h['reason']?.toString() ?? 'Verified emergency hospital candidate.',
-            style: const TextStyle(color: AppTheme.muted, fontSize: 11, height: 1.35),
-          ),
-          const SizedBox(height: 14),
-          Row(children: [
-            Expanded(
-              child: PrimaryButton(
-                label: selected ? 'Opening navigation…' : rank == 1 ? 'Select #1 Best Match' : 'Use this hospital',
-                icon: Icons.navigation_rounded,
-                background: rank == 1 ? AppTheme.blue : isTopRank ? const Color(0xFF1E3A8A) : const Color(0xFF334155),
-                onPressed: selected || selectingHospitalId != null ? null : () => _useHospital(h),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHospitalThumbnail() {
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFDBEAFE)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Sky gradient
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFFBAE6FD), Color(0xFFE0F2FE)],
+                ),
               ),
             ),
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-              onPressed: () => _previewHospital(h),
-              icon: const Icon(Icons.map_rounded),
-              tooltip: 'Open on map',
+            // Modern building graphic
+            Positioned(
+              bottom: 0,
+              child: Container(
+                width: 38,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E3A8A),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: List.generate(
+                        3,
+                        (_) => Container(
+                          width: 6,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF93C5FD),
+                            borderRadius: BorderRadius.circular(1),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: List.generate(
+                        3,
+                        (_) => Container(
+                          width: 6,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF93C5FD),
+                            borderRadius: BorderRadius.circular(1),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ]),
-        ]),
+            // Red cross on roof
+            Positioned(
+              top: 4,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.add,
+                  size: 10,
+                  color: Color(0xFFDC2626),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -315,7 +715,4 @@ class _HospitalSelectionPageState extends State<HospitalSelectionPage> {
     final raw = h['duration_seconds'];
     return raw is num ? '${(raw / 60).ceil()} min ETA' : 'ETA unavailable';
   }
-
-  String _label(String? profile) =>
-      profile == 'comfort_priority' ? 'COMFORT ROUTE' : profile == 'traffic_priority' ? 'TRAFFIC PRIORITY' : 'FASTEST ROUTE';
 }

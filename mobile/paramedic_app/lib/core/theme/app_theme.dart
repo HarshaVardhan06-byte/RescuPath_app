@@ -1,23 +1,28 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  static const navy = Color(0xFF0A1930);
-  static const navy2 = Color(0xFF102744);
-  static const red = Color(0xFFFF3B4B);
-  static const redDark = Color(0xFFDE1830);
-  static const blue = Color(0xFF2477FF);
-  static const cyan = Color(0xFF12BFEA);
-  static const green = Color(0xFF14B879);
-  static const amber = Color(0xFFFFA81E);
+  static const navy = Color(0xFF0A2540);
+  static const navy2 = Color(0xFF0F172A);
+  static const red = Color(0xFFDC2626);
+  static const redLight = Color(0xFFEF4444);
+  static const redDark = Color(0xFFB91C1C);
+  static const blue = Color(0xFF2563EB);
+  static const cyan = Color(0xFF0EA5E9);
+  static const green = Color(0xFF16A34A);
+  static const greenLight = Color(0xFFDCFCE7);
+  static const greenText = Color(0xFF15803D);
+  static const pinkLight = Color(0xFFFFF1F2);
+  static const pinkBorder = Color(0xFFFECDD3);
+  static const amber = Color(0xFFF59E0B);
   static const orange = amber;
   static const purple = Color(0xFF6B4EFF);
   static const pink = Color(0xFFFF4C93);
-  static const ink = Color(0xFF10233F);
-  static const muted = Color(0xFF68788F);
-  static const bg = Color(0xFFF4F7FB);
+  static const ink = Color(0xFF0F172A);
+  static const muted = Color(0xFF64748B);
+  static const bg = Color(0xFFF8FAFC);
   static const card = Colors.white;
   static const surface = card;
-  static const line = Color(0xFFE4EAF2);
+  static const line = Color(0xFFE2E8F0);
 
   static ThemeData light() {
     final scheme = ColorScheme.fromSeed(
