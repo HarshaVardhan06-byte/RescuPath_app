@@ -196,5 +196,31 @@ def test_police_board_1km_radius_and_profile_isolation():
         assert second_card["police_acknowledged"] is False
         assert second_card["any_police_acknowledged"] is True
 
+        # 7. Test Ambulance Arrival Notice Delivery to Police
+        # Paramedic marks status as ARRIVED
+        em.status = "ARRIVED"
+        db.add(EmergencyEvent(
+            emergency_id=em.id,
+            event_type="POLICE_AMBULANCE_ARRIVED",
+            payload={
+                "emergency_id": str(em.id),
+                "ambulance_number": "KA-01-AMB-108",
+                "hospital_name": "Sri Jayadeva Hospital",
+                "message": "Ambulance KA-01-AMB-108 has successfully arrived at Sri Jayadeva Hospital. Traffic clearance concluded.",
+                "arrived_at": datetime.now(timezone.utc).isoformat(),
+                "status": "ARRIVED",
+            },
+            created_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+
+        # Check that police board still delivers the arrived emergency and includes arrival notice
+        arrival_board = police_board(db=db, user=close_user)
+        arrived_card = next((a for a in arrival_board["alerts"] if a["emergency_id"] == str(em.id)), None)
+        assert arrived_card is not None, "Ambulance in ARRIVED status must not be dropped before police clearance"
+        assert arrived_card["is_arrived"] is True
+        assert "arrived at Sri Jayadeva" in arrived_card["arrival_message"]
+        assert arrived_card["arrival_notification_id"] is not None
+
     finally:
         db.close()

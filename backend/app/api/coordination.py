@@ -34,7 +34,7 @@ from app.services.hospital_selection import get_emergency_condition, normalize_c
 from app.services.routing import get_routing_provider, route_points
 
 router = APIRouter(prefix="/coordination", tags=["Police & Hospital Coordination"])
-CLOSED = {"ARRIVED", "COMPLETED", "CANCELLED"}
+CLOSED = {"COMPLETED", "CANCELLED"}
 
 
 class PoliceRegister(BaseModel):
@@ -239,6 +239,16 @@ def _emergency_card(db, emergency: Emergency, *, eta_override: int | None = None
         eta = None
         eta_basis = "route ETA not yet available"
     patient = db.get(Patient, emergency.patient_id) if emergency.patient_id else None
+    arrival_ev = _latest_event(db, emergency.id, "POLICE_AMBULANCE_ARRIVED")
+    is_arrived = (emergency.status == "ARRIVED") or (arrival_ev is not None)
+    arrival_payload = arrival_ev.payload or {} if arrival_ev else {}
+    arrival_time = arrival_payload.get("arrived_at") or (arrival_ev.created_at.isoformat() if arrival_ev else None)
+    if not arrival_time and emergency.status == "ARRIVED" and emergency.updated_at:
+        arrival_time = emergency.updated_at.isoformat()
+    arrival_msg = arrival_payload.get("message") or (
+        f"Ambulance has safely arrived at {hospital.name if hospital else 'destination hospital'}. Traffic clearance complete."
+        if is_arrived else None
+    )
     return {
         "emergency_id": str(emergency.id),
         "ambulance_id": str(emergency.ambulance_id) if emergency.ambulance_id else None,
@@ -267,6 +277,10 @@ def _emergency_card(db, emergency: Emergency, *, eta_override: int | None = None
         "hospital_emergency_available": hospital.is_emergency_available if hospital else None,
         "eta_seconds": eta,
         "eta_basis": eta_basis,
+        "is_arrived": is_arrived,
+        "arrived_at": arrival_time,
+        "arrival_message": arrival_msg,
+        "arrival_notification_id": str(arrival_ev.id) if arrival_ev else ("arrived" if is_arrived else None),
         "location_updated_at": latest_loc.created_at.isoformat() if latest_loc else None,
         "last_location_accuracy_meters": loc_payload.get("accuracy_meters"),
         "created_at": emergency.created_at.isoformat(),
