@@ -31,7 +31,14 @@ class _PoliceLoginPageState extends State<PoliceLoginPage> {
       widget.onSignedIn();
     } catch (e) {
       await api.logout();
-      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        final err = e.toString().replaceFirst('Exception: ', '');
+        if (err.contains('People API') || err.contains('people.googleapis.com')) {
+          setState(() => error = 'Google People API must be enabled for project 1084797807505. Visit: console.developers.google.com/apis/api/people.googleapis.com/overview?project=1084797807505');
+        } else {
+          setState(() => error = err);
+        }
+      }
     } finally { if (mounted) setState(() => busy = false); }
   }
 
@@ -65,7 +72,14 @@ class _PoliceLoginPageState extends State<PoliceLoginPage> {
       widget.onSignedIn();
     } catch (e) {
       await api.logout();
-      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        final err = e.toString().replaceFirst('Exception: ', '');
+        if (err.contains('People API') || err.contains('people.googleapis.com')) {
+          setState(() => error = 'Google People API must be enabled for project 1084797807505. Visit: console.developers.google.com/apis/api/people.googleapis.com/overview?project=1084797807505');
+        } else {
+          setState(() => error = err);
+        }
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -91,7 +105,14 @@ class _PoliceLoginPageState extends State<PoliceLoginPage> {
       widget.onSignedIn();
     } catch (e) {
       await api.logout();
-      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        final err = e.toString().replaceFirst('Exception: ', '');
+        if (err.contains('People API') || err.contains('people.googleapis.com')) {
+          setState(() => error = 'Google People API must be enabled for project 1084797807505. Visit: console.developers.google.com/apis/api/people.googleapis.com/overview?project=1084797807505');
+        } else {
+          setState(() => error = err);
+        }
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -251,16 +272,11 @@ class _PoliceForgotSheetState extends State<_PoliceForgotSheet> {
       modalSuccess = null;
     });
     try {
-      final res = await widget.api.post('/auth/forgot-password', {'email': mail});
+      await widget.api.post('/auth/forgot-password', {'email': mail});
       if (mounted) {
         setState(() {
           step = 2;
-          final sent = res['email_sent'] == true;
-          if (sent) {
-            modalSuccess = 'A 6-digit verification code has been dispatched to $mail. Check your Gmail inbox (and Spam folder).';
-          } else {
-            modalSuccess = 'Verification code for $mail: [ ${res['otp']} ]. Enter this code below to set your new password.';
-          }
+          modalSuccess = 'A 6-digit verification code has been dispatched directly to $mail. Please check your Gmail inbox (and Spam folder), then enter the code below to set your new password.';
           otpCtrl.clear();
         });
       }

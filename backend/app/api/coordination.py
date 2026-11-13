@@ -534,15 +534,17 @@ def hospital_forgot_credentials(data: HospitalForgotRequest, db=Depends(get_db))
 
         sent = send_password_reset_otp_email(email_str, otp, hosp.admin_name or hosp.name)
 
-        return {
+        res = {
             "status": "otp_sent",
-            "message": f"A 6-digit verification code has been sent to {email_str}. Enter it below to set a new password.",
+            "message": f"A 6-digit verification code has been dispatched to {email_str}.",
             "gst_number": hosp.gst_number,
             "hospital_name": hosp.name,
             "admin_email": email_str,
-            "otp": otp,  # Provided for immediate verification/dev fallback
             "email_sent": sent,
         }
+        if settings.debug or settings.environment in {"test", "development", "local"}:
+            res["otp"] = otp
+        return res
 
 
 @router.post("/hospital/reset-password")

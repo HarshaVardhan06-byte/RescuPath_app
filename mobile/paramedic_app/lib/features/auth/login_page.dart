@@ -33,7 +33,14 @@ class _LoginPageState extends State<LoginPage> {
       await api.saveToken(r['access_token'].toString());
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
-      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        final err = e.toString().replaceFirst('Exception: ', '');
+        if (err.contains('People API') || err.contains('people.googleapis.com')) {
+          setState(() => error = 'Google People API must be enabled for project 1084797807505. Visit: console.developers.google.com/apis/api/people.googleapis.com/overview?project=1084797807505');
+        } else {
+          setState(() => error = err);
+        }
+      }
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -67,7 +74,14 @@ class _LoginPageState extends State<LoginPage> {
       await api.saveToken(r['access_token'].toString());
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
-      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        final err = e.toString().replaceFirst('Exception: ', '');
+        if (err.contains('People API') || err.contains('people.googleapis.com')) {
+          setState(() => error = 'Google People API must be enabled for project 1084797807505. Visit: console.developers.google.com/apis/api/people.googleapis.com/overview?project=1084797807505');
+        } else {
+          setState(() => error = err);
+        }
+      }
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -91,7 +105,14 @@ class _LoginPageState extends State<LoginPage> {
       await api.saveToken(r['access_token'].toString());
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
-      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        final err = e.toString().replaceFirst('Exception: ', '');
+        if (err.contains('People API') || err.contains('people.googleapis.com')) {
+          setState(() => error = 'Google People API must be enabled for project 1084797807505. Visit: console.developers.google.com/apis/api/people.googleapis.com/overview?project=1084797807505');
+        } else {
+          setState(() => error = err);
+        }
+      }
     } finally {
       if (mounted) setState(() => loading = false);
     }

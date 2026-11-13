@@ -569,14 +569,16 @@ def forgot_password(
         user.full_name,
     )
 
-    return {
+    res = {
         "status": "success",
-        "message": f"A 6-digit verification code has been sent to {user.email}.",
+        "message": f"A 6-digit verification code has been dispatched to {user.email}.",
         "email": user.email,
-        "otp": otp,  # Provided for immediate verification/dev fallback
         "expires_in_minutes": 15,
         "email_sent": sent,
     }
+    if settings.debug or settings.environment in {"test", "development", "local"}:
+        res["otp"] = otp
+    return res
 
 
 @router.post("/reset-password")

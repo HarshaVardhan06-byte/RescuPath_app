@@ -697,8 +697,8 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
       borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        constraints: const BoxConstraints(minHeight: 64),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        constraints: const BoxConstraints(minHeight: 60),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? Colors.white : Colors.white.withValues(alpha: .85),
           borderRadius: BorderRadius.circular(16),
@@ -713,13 +713,13 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
         child: Row(
           children: [
             Container(
-              width: 34,
-              height: 34,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
                 color: color.withValues(alpha: .12),
-                borderRadius: BorderRadius.circular(11),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: color, size: 18),
+              child: Icon(icon, color: color, size: 17),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -727,9 +727,13 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    value,
-                    style: const TextStyle(color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 18),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      value,
+                      style: const TextStyle(color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 18),
+                    ),
                   ),
                   Text(
                     label,
@@ -737,7 +741,7 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: isSelected ? color : LuxuryTheme.muted,
-                      fontSize: 10,
+                      fontSize: 9.5,
                       fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
                     ),
                   ),
@@ -1154,24 +1158,35 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Column(
+                                  LayoutBuilder(
+                                    builder: (context, heroBox) {
+                                      final isMobile = heroBox.maxWidth < 650;
+                                      return Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             '$_greeting • Corridor Command',
-                                            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900),
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: isMobile ? 18 : 24,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
                                           const SizedBox(height: 4),
-                                          const Text(
+                                          Text(
                                             'Clear traffic corridors. Save emergency response lives.',
-                                            style: TextStyle(color: Color(0xCCFFFFFF), fontSize: 12),
+                                            style: TextStyle(
+                                              color: const Color(0xCCFFFFFF),
+                                              fontSize: isMobile ? 11 : 12,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         ],
-                                      ),
-                                    ],
+                                      );
+                                    },
                                   ),
                                   const SizedBox(height: 17),
                                   // Clickable 4-card Hero Filter Matrix

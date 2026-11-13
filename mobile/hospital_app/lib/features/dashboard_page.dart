@@ -709,19 +709,30 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: const [
-              Icon(Icons.health_and_safety_rounded, color: LuxuryTheme.blue, size: 26),
-              SizedBox(width: 10),
-              Text('Hospital Account & Facility Profile',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-            ],
-          ),
-          content: SizedBox(
-            width: 600,
-            child: SingleChildScrollView(
+        builder: (context, setDialogState) {
+          final screenWidth = MediaQuery.sizeOf(context).width;
+          final isMobile = screenWidth < 620;
+
+          return AlertDialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                const Icon(Icons.health_and_safety_rounded, color: LuxuryTheme.blue, size: 26),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Hospital Facility Profile',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: isMobile ? 16 : 18),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: isMobile ? screenWidth * 0.92 : 600,
+              child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -779,21 +790,33 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                   const Text('ADMINISTRATOR CONTACT',
                       style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: LuxuryTheme.muted, letterSpacing: 0.5)),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                          child: TextField(
-                              controller: adminNameCtrl,
-                              decoration: const InputDecoration(
-                                  labelText: 'Administrator Name', prefixIcon: Icon(Icons.person_outline)))),
-                      const SizedBox(width: 8),
-                      Expanded(
-                          child: TextField(
-                              controller: adminPhoneCtrl,
-                              decoration: const InputDecoration(
-                                  labelText: 'Emergency Phone', prefixIcon: Icon(Icons.phone_outlined)))),
-                    ],
-                  ),
+                  if (isMobile) ...[
+                    TextField(
+                        controller: adminNameCtrl,
+                        decoration: const InputDecoration(
+                            labelText: 'Administrator Name', prefixIcon: Icon(Icons.person_outline))),
+                    const SizedBox(height: 8),
+                    TextField(
+                        controller: adminPhoneCtrl,
+                        decoration: const InputDecoration(
+                            labelText: 'Emergency Phone', prefixIcon: Icon(Icons.phone_outlined))),
+                  ] else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                            child: TextField(
+                                controller: adminNameCtrl,
+                                decoration: const InputDecoration(
+                                    labelText: 'Administrator Name', prefixIcon: Icon(Icons.person_outline)))),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child: TextField(
+                                controller: adminPhoneCtrl,
+                                decoration: const InputDecoration(
+                                    labelText: 'Emergency Phone', prefixIcon: Icon(Icons.phone_outlined)))),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   TextField(
                       controller: adminEmailCtrl,
@@ -804,70 +827,133 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                   const Text('STAFF & AMBULANCE PARKING',
                       style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: LuxuryTheme.muted, letterSpacing: 0.5)),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                          child: TextField(
-                              controller: staffCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                  labelText: 'Medical Staff on Duty', prefixIcon: Icon(Icons.people_outline)))),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                              color: LuxuryTheme.bg,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: LuxuryTheme.line)),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.local_parking_rounded, color: LuxuryTheme.blue, size: 20),
-                              const SizedBox(width: 6),
-                              const Expanded(
-                                  child: Text('Ambulance Parking Bay',
-                                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
-                              Switch(
-                                  value: parkingVal,
-                                  activeThumbColor: LuxuryTheme.green,
-                                  onChanged: (v) => setDialogState(() => parkingVal = v)),
-                            ],
+                  if (isMobile) ...[
+                    TextField(
+                        controller: staffCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                            labelText: 'Medical Staff on Duty', prefixIcon: Icon(Icons.people_outline))),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                          color: LuxuryTheme.bg,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: LuxuryTheme.line)),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.local_parking_rounded, color: LuxuryTheme.blue, size: 20),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                              child: Text('Ambulance Parking Bay',
+                                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
+                          Switch(
+                              value: parkingVal,
+                              activeThumbColor: LuxuryTheme.green,
+                              onChanged: (v) => setDialogState(() => parkingVal = v)),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                            child: TextField(
+                                controller: staffCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                    labelText: 'Medical Staff on Duty', prefixIcon: Icon(Icons.people_outline)))),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                                color: LuxuryTheme.bg,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: LuxuryTheme.line)),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.local_parking_rounded, color: LuxuryTheme.blue, size: 20),
+                                const SizedBox(width: 6),
+                                const Expanded(
+                                    child: Text('Ambulance Parking Bay',
+                                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11))),
+                                Switch(
+                                    value: parkingVal,
+                                    activeThumbColor: LuxuryTheme.green,
+                                    onChanged: (v) => setDialogState(() => parkingVal = v)),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   const Text('LIVE EMERGENCY CAPACITY & INVENTORY',
                       style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: LuxuryTheme.muted, letterSpacing: 0.5)),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                          child: TextField(
-                              controller: editIcuCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(labelText: 'ICU Beds'))),
-                      const SizedBox(width: 8),
-                      Expanded(
-                          child: TextField(
-                              controller: editO2Ctrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(labelText: 'O₂ Cylinders'))),
-                      const SizedBox(width: 8),
-                      Expanded(
-                          child: TextField(
-                              controller: editErCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(labelText: 'ER Beds'))),
-                      const SizedBox(width: 8),
-                      Expanded(
-                          child: TextField(
-                              controller: editVentCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(labelText: 'Ventilators'))),
-                    ],
-                  ),
+                  if (isMobile) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                            child: TextField(
+                                controller: editIcuCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(labelText: 'ICU Beds'))),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child: TextField(
+                                controller: editO2Ctrl,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(labelText: 'O₂ Cylinders'))),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                            child: TextField(
+                                controller: editErCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(labelText: 'ER Beds'))),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child: TextField(
+                                controller: editVentCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(labelText: 'Ventilators'))),
+                      ],
+                    ),
+                  ] else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                            child: TextField(
+                                controller: editIcuCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(labelText: 'ICU Beds'))),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child: TextField(
+                                controller: editO2Ctrl,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(labelText: 'O₂ Cylinders'))),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child: TextField(
+                                controller: editErCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(labelText: 'ER Beds'))),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child: TextField(
+                                controller: editVentCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(labelText: 'Ventilators'))),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 18),
                   const Divider(height: 1),
                   const SizedBox(height: 10),
@@ -948,10 +1034,11 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
               style: FilledButton.styleFrom(backgroundColor: LuxuryTheme.blue),
             ),
           ],
-        ),
-      ),
-    );
-  }
+        );
+      },
+    ),
+  );
+}
 
   // Clickable Tab Card for Pending, Accepted, Declined, History
   Widget _filterCard({
@@ -967,8 +1054,8 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
       borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        constraints: const BoxConstraints(minHeight: 64),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        constraints: const BoxConstraints(minHeight: 60),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? Colors.white : Colors.white.withValues(alpha: .88),
           borderRadius: BorderRadius.circular(16),
@@ -983,34 +1070,39 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
         child: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
                 color: color.withValues(alpha: .14),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: color, size: 20),
+              child: Icon(icon, color: color, size: 18),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Row(
-                    children: [
-                      Text(count,
-                          style: const TextStyle(color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 19)),
-                      if (isSelected) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4)),
-                          child: const Text('VIEW',
-                              style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900)),
-                        ),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(count,
+                            style: const TextStyle(color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 18)),
+                        if (isSelected) ...[
+                          const SizedBox(width: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4)),
+                            child: const Text('VIEW',
+                                style: TextStyle(color: Colors.white, fontSize: 7.5, fontWeight: FontWeight.w900)),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                   Text(label,
                       maxLines: 1,
@@ -1643,22 +1735,36 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                               ],
                             ),
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text('$_greeting • Emergency Arrivals',
-                                        style: const TextStyle(color: Colors.white, fontSize: 25, fontWeight: FontWeight.w900)),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                    decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: .2),
-                                        borderRadius: BorderRadius.circular(20)),
-                                    child: Text('Viewing: $activeFilter',
-                                        style: const TextStyle(
-                                            color: Colors.white, fontWeight: FontWeight.w800, fontSize: 11)),
-                                  ),
-                                ],
+                              LayoutBuilder(
+                                builder: (context, heroBox) {
+                                  final isMobile = heroBox.maxWidth < 650;
+                                  return Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          '$_greeting • Emergency Arrivals',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: isMobile ? 18 : 24,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                        decoration: BoxDecoration(
+                                            color: Colors.white.withValues(alpha: .2),
+                                            borderRadius: BorderRadius.circular(20)),
+                                        child: Text('Viewing: $activeFilter',
+                                            style: const TextStyle(
+                                                color: Colors.white, fontWeight: FontWeight.w800, fontSize: 10.5)),
+                                      ),
+                                    ],
+                                  );
+                                },
                               ),
                               const SizedBox(height: 3),
                               Text(

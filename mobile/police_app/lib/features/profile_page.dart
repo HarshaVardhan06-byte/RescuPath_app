@@ -102,82 +102,90 @@ class _PoliceProfilePageState extends State<PoliceProfilePage> {
           style: TextStyle(color: LuxuryTheme.ink, fontWeight: FontWeight.w900, fontSize: 18),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 600),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Officer Hero Card
-                  Container(
-                    padding: const EdgeInsets.all(22),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [LuxuryTheme.navy, Color(0xFF1A3B69)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: const [
-                        BoxShadow(color: Color(0x220A1930), blurRadius: 20, offset: Offset(0, 8)),
-                      ],
-                    ),
-                    child: Row(
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600),
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final isMobile = box.maxWidth < 450;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // Officer Hero Card
                         Container(
-                          width: 64,
-                          height: 64,
+                          padding: EdgeInsets.all(isMobile ? 16 : 22),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: .15),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white.withValues(alpha: .3), width: 2),
+                            gradient: const LinearGradient(
+                              colors: [LuxuryTheme.navy, Color(0xFF1A3B69)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: const [
+                              BoxShadow(color: Color(0x220A1930), blurRadius: 20, offset: Offset(0, 8)),
+                            ],
                           ),
-                          child: const Icon(Icons.shield_rounded, color: Colors.white, size: 34),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Row(
                             children: [
-                              Text(
-                                name,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Badge #$badge • $station',
-                                style: const TextStyle(color: Color(0xCCFFFFFF), fontSize: 12),
-                              ),
-                              const SizedBox(height: 10),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                width: isMobile ? 50 : 64,
+                                height: isMobile ? 50 : 64,
                                 decoration: BoxDecoration(
-                                  color: (currentDuty ? LuxuryTheme.green : LuxuryTheme.amber).withValues(alpha: .25),
-                                  borderRadius: BorderRadius.circular(99),
+                                  color: Colors.white.withValues(alpha: .15),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white.withValues(alpha: .3), width: 2),
                                 ),
-                                child: Text(
-                                  currentDuty ? 'ON DUTY • ACTIVE' : 'OFF DUTY • OFFLINE',
-                                  style: TextStyle(
-                                    color: currentDuty ? Colors.lightGreenAccent : Colors.orangeAccent,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 0.5,
-                                  ),
+                                child: Icon(Icons.shield_rounded, color: Colors.white, size: isMobile ? 26 : 34),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: isMobile ? 17 : 20,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      'Badge #$badge • $station',
+                                      style: const TextStyle(color: Color(0xCCFFFFFF), fontSize: 11.5),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: (currentDuty ? LuxuryTheme.green : LuxuryTheme.amber).withValues(alpha: .25),
+                                        borderRadius: BorderRadius.circular(99),
+                                      ),
+                                      child: Text(
+                                        currentDuty ? 'ON DUTY • ACTIVE' : 'OFF DUTY • OFFLINE',
+                                        style: TextStyle(
+                                          color: currentDuty ? Colors.lightGreenAccent : Colors.orangeAccent,
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
 
                   const SizedBox(height: 20),
 
@@ -266,13 +274,16 @@ class _PoliceProfilePageState extends State<PoliceProfilePage> {
                     ),
                   ),
                 ],
-              ),
-            ),
+              );
+            },
           ),
-        ],
+        ),
       ),
-    );
-  }
+    ],
+  ),
+),
+);
+}
 
   Widget _profileRow(IconData icon, String label, String value, Color color) {
     return Row(
@@ -291,9 +302,9 @@ class _PoliceProfilePageState extends State<PoliceProfilePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: const TextStyle(color: LuxuryTheme.muted, fontSize: 10, fontWeight: FontWeight.w700)),
+              Text(label, style: const TextStyle(color: LuxuryTheme.muted, fontSize: 10, fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 2),
-              Text(value, style: const TextStyle(color: LuxuryTheme.ink, fontSize: 13, fontWeight: FontWeight.w800)),
+              Text(value, style: const TextStyle(color: LuxuryTheme.ink, fontSize: 13, fontWeight: FontWeight.w800), softWrap: true),
             ],
           ),
         ),

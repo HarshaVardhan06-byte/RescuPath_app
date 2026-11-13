@@ -35,16 +35,11 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       message = null;
     });
     try {
-      final r = await api.post('/auth/forgot-password', {'email': emailText});
+      await api.post('/auth/forgot-password', {'email': emailText});
       if (mounted) {
         setState(() {
           step = 2;
-          final sent = r['email_sent'] == true;
-          if (sent) {
-            message = 'A 6-digit verification code has been dispatched to $emailText. Please check your Gmail inbox (and Spam folder).';
-          } else {
-            message = 'Verification code generated for $emailText: [ ${r['otp']} ]. Enter this code below to set your new password.';
-          }
+          message = 'A 6-digit verification code has been dispatched directly to $emailText. Please check your Gmail inbox (and Spam folder), then enter the code below to set your new password.';
           otp.clear();
         });
       }

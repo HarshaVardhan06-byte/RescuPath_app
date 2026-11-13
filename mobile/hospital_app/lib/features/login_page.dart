@@ -1158,12 +1158,7 @@ class _ForgotCredentialsSheetState extends State<_ForgotCredentialsSheet> {
           final adminMail = res['admin_email']?.toString() ?? ident;
           resetAdminEmail.text = adminMail;
           resetOtp.clear();
-          final sent = res['email_sent'] == true;
-          if (sent) {
-            modalSuccess = 'A 6-digit verification code has been dispatched to $adminMail. Check your Gmail inbox (and Spam folder).';
-          } else {
-            modalSuccess = 'Verification code for $adminMail: [ ${res['otp']} ]. Enter this code below to set your new password.';
-          }
+          modalSuccess = 'A 6-digit verification code has been dispatched directly to $adminMail. Please check your Gmail inbox (and Spam folder), then enter the code below to set your new password.';
         });
       } else {
         throw Exception(res['detail']?.toString() ?? 'Failed to send OTP.');
