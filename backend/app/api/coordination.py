@@ -662,14 +662,44 @@ def update_police_duty(data: DutyUpdate, db=Depends(get_db), user: User = Depend
 
 
 @router.get("/police/board")
-def police_board(db=Depends(get_db), user: User = Depends(get_current_user)):
+def police_board(
+    lat: float | None = None,
+    lon: float | None = None,
+    db=Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     profile = _police_profile(db, user)
-    event_rows = db.scalars(select(EmergencyEvent).where(EmergencyEvent.event_type == "POLICE_TRAFFIC_CLEARANCE_REQUESTED").order_by(EmergencyEvent.created_at.desc()).limit(200)).all()
+
+    # 1. Update live GPS coordinates if provided in query parameters
+    if lat is not None and lon is not None:
+        profile.current_latitude = lat
+        profile.current_longitude = lon
+        profile.last_location_at = datetime.now(timezone.utc)
+        db.commit()
+
+    # 2. Prevent stale test datasets (older than 24h) from showing on fresh profiles
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    event_rows = db.scalars(
+        select(EmergencyEvent)
+        .where(
+            EmergencyEvent.event_type == "POLICE_TRAFFIC_CLEARANCE_REQUESTED",
+            EmergencyEvent.created_at >= cutoff_time,
+        )
+        .order_by(EmergencyEvent.created_at.desc())
+        .limit(100)
+    ).all()
+
     seen: set[uuid.UUID] = set()
     alerts = []
-    has_assigned_junction = profile.junction_latitude is not None and profile.junction_longitude is not None
-    junction_lat = profile.junction_latitude if has_assigned_junction else profile.current_latitude
-    junction_lon = profile.junction_longitude if has_assigned_junction else profile.current_longitude
+    MAX_POLICE_ALERT_RADIUS_KM = 1.0  # Strict 1.0 km radius per operational requirement
+
+    has_assigned_junction = (
+        profile.junction_latitude is not None
+        and profile.junction_longitude is not None
+        and profile.junction_name not in (None, "", "Central Traffic Junction")
+    )
+
     for ev in event_rows:
         if ev.emergency_id in seen:
             continue
@@ -683,22 +713,66 @@ def police_board(db=Depends(get_db), user: User = Depends(get_current_user)):
             "assigned junction" if has_assigned_junction
             else "officer GPS location (assign a mapped junction for a junction-specific ETA)"
         )
-        if junction_lat is not None and junction_lon is not None:
-            d = _distance_km(float(card["ambulance_latitude"]), float(card["ambulance_longitude"]), float(junction_lat), float(junction_lon))
+
+        amb_lat = float(card["ambulance_latitude"])
+        amb_lon = float(card["ambulance_longitude"])
+
+        # Calculate distances:
+        # Check live GPS first
+        gps_d = (
+            _distance_km(amb_lat, amb_lon, float(profile.current_latitude), float(profile.current_longitude))
+            if (profile.current_latitude is not None and profile.current_longitude is not None)
+            else None
+        )
+        # Check assigned junction (ignoring legacy dummy default junction)
+        junc_d = (
+            _distance_km(amb_lat, amb_lon, float(profile.junction_latitude), float(profile.junction_longitude))
+            if has_assigned_junction
+            else None
+        )
+
+        # The effective distance to the emergency:
+        if gps_d is not None and junc_d is not None:
+            d = min(gps_d, junc_d)
+        elif gps_d is not None:
+            d = gps_d
+        elif junc_d is not None:
+            d = junc_d
+        else:
+            d = None
+
+        if d is not None:
             card["junction_distance_km"] = round(d, 2)
-            # Estimate is from live ambulance GPS to the officer's assigned junction.
-            # It is deliberately labelled approximate; no traffic feed is assumed.
             card["junction_eta_seconds"] = int(d / 25.0 * 3600)
             card["junction_eta_basis"] = "approximate straight-line estimate at 25 km/h; not traffic-aware"
         else:
             card["junction_distance_km"] = None
             card["junction_eta_seconds"] = None
             card["junction_eta_basis"] = "officer has not shared a junction/current GPS location"
+
         card["alert_created_at"] = ev.created_at.isoformat()
-        latest_ack = _latest_event(db, emergency.id, "POLICE_ALERT_ACKNOWLEDGED")
-        latest_clear = _latest_event(db, emergency.id, "POLICE_JUNCTION_CLEARED")
-        card["police_acknowledged"] = latest_ack is not None
-        card["traffic_cleared"] = latest_clear is not None
+
+        # 3. Profile-Specific Records: Check whether THIS officer interacted with this emergency
+        ack_events = db.scalars(
+            select(EmergencyEvent).where(
+                EmergencyEvent.emergency_id == emergency.id,
+                EmergencyEvent.event_type == "POLICE_ALERT_ACKNOWLEDGED",
+            )
+        ).all()
+        clear_events = db.scalars(
+            select(EmergencyEvent).where(
+                EmergencyEvent.emergency_id == emergency.id,
+                EmergencyEvent.event_type == "POLICE_JUNCTION_CLEARED",
+            )
+        ).all()
+
+        my_ack = any(str((e.payload or {}).get("officer_id")) == str(user.id) for e in ack_events)
+        my_clear = any(str((e.payload or {}).get("officer_id")) == str(user.id) for e in clear_events)
+        card["police_acknowledged"] = my_ack
+        card["traffic_cleared"] = my_clear
+        card["any_police_acknowledged"] = len(ack_events) > 0
+        card["any_traffic_cleared"] = len(clear_events) > 0
+
         relay_events = db.scalars(
             select(EmergencyEvent)
             .where(
@@ -720,6 +794,20 @@ def police_board(db=Depends(get_db), user: User = Depends(get_current_user)):
         card["relay_from_junction"] = (relay_to_me.payload or {}).get("from_junction") if relay_to_me else None
         card["relay_note"] = (relay_to_me.payload or {}).get("note") if relay_to_me else None
         card["relay_created_at"] = relay_to_me.created_at.isoformat() if relay_to_me else None
+
+        # 4. Strict 1 km Radius & Profile Isolation:
+        # Only deliver this alert to this officer if:
+        # a) The ambulance is within 1.0 km radius of the officer (live GPS or junction), OR
+        # b) The alert was specifically relayed to THIS officer, OR
+        # c) THIS officer previously acknowledged/cleared it (part of their own record history).
+        is_within_1km = d is not None and d <= MAX_POLICE_ALERT_RADIUS_KM
+        is_relayed = card["relayed_to_me"]
+        is_my_history = my_ack or my_clear
+
+        if not (is_within_1km or is_relayed or is_my_history):
+            # Out of radius (e.g. 15 km away) and not assigned to this officer -> DO NOT NOTIFY / INCLUDE
+            continue
+
         alerts.append(card)
     officers = db.scalars(select(PoliceOfficerProfile).where(PoliceOfficerProfile.duty_status == "ON_DUTY").order_by(PoliceOfficerProfile.station_name, PoliceOfficerProfile.junction_name)).all()
     junctions = [{"officer_id": str(o.user_id), "badge_number": o.badge_number, "officer_name": db.get(User, o.user_id).full_name if db.get(User, o.user_id) else "Officer", "station_name": o.station_name, "junction_name": o.junction_name, "latitude": o.junction_latitude if o.junction_latitude is not None else o.current_latitude, "longitude": o.junction_longitude if o.junction_longitude is not None else o.current_longitude, "current_latitude": o.current_latitude, "current_longitude": o.current_longitude, "last_location_at": o.last_location_at.isoformat() if o.last_location_at else None} for o in officers]

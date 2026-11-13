@@ -147,7 +147,8 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
 
   Future<void> _load() async {
     try {
-      final raw = await api.get('/coordination/police/board');
+      final q = (myLat != null && myLon != null) ? '?lat=$myLat&lon=$myLon' : '';
+      final raw = await api.get('/coordination/police/board$q');
       if (!mounted || raw is! Map) return;
       final next = Map<String, dynamic>.from(raw);
       final allNextAlerts = _list(next['alerts']);
@@ -168,7 +169,14 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
 
       final newNotificationKeys = _hasLoadedInitialBoard
           ? incomingNotificationKeys.difference(_knownNotificationKeys)
-          : <String>{};
+          : incomingNotificationKeys.where((k) {
+              final idStr = k.split(':').first;
+              final matching = nextAlerts.firstWhere(
+                (a) => a['emergency_id']?.toString() == idStr,
+                orElse: () => <String, dynamic>{},
+              );
+              return matching['police_acknowledged'] != true;
+            }).toSet();
       _knownNotificationKeys = incomingNotificationKeys;
       _hasLoadedInitialBoard = true;
 
@@ -193,14 +201,20 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
       });
 
       if (newNotificationKeys.isNotEmpty) {
-        _buzzNewAlert();
         final newAlertItem = nextAlerts.firstWhere(
           (a) =>
               newNotificationKeys.contains('${a['emergency_id']}:alert') ||
               newNotificationKeys.any((k) => k.startsWith('${a['emergency_id']}:')),
           orElse: () => nextAlerts.first,
         );
-        _showIncomingAlertMessageDialog(newAlertItem);
+        final dist = (newAlertItem['junction_distance_km'] as num?)?.toDouble();
+        final isRelayed = newAlertItem['relayed_to_me'] == true;
+
+        // Strict 1 km rule: Only buzz and notify if within 1.0 km radius (or explicitly relayed)
+        if (isRelayed || dist == null || dist <= 1.0) {
+          _buzzNewAlert();
+          _showIncomingAlertMessageDialog(newAlertItem);
+        }
       }
       if (myLat != null && junctionsUpdated == null) _loadNearbyJunctions();
       if (id != null && (routeData == null || routeData!['emergency_id']?.toString() != id)) {
@@ -260,12 +274,16 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
 
   Future<void> _sendLocation(Position p) async {
     if (!mounted) return;
+    final bool firstFix = myLat == null;
     setState(() {
       myLat = p.latitude;
       myLon = p.longitude;
     });
     try {
       await api.put('/coordination/police/location', {'latitude': p.latitude, 'longitude': p.longitude});
+      if (firstFix) {
+        await _load();
+      }
     } catch (_) {}
   }
 
