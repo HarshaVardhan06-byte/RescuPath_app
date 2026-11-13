@@ -481,33 +481,6 @@ def notify_hospital(data: HospitalArrivalNotificationRequest, emergency_id: str 
             "request_id": str(availability_request.id),
         }
 
-    # Ensure police corridor alert is updated with the arrival destination hospital and ETA
-    existing_police = _latest_event(db, emergency.id, "POLICE_TRAFFIC_CLEARANCE_REQUESTED")
-    police_payload = {
-        "emergency_id": str(emergency.id),
-        "ambulance_id": str(emergency.ambulance_id) if emergency.ambulance_id else None,
-        "hospital_id": str(hospital.id),
-        "hospital_name": hospital.name,
-        "condition": condition,
-        "severity": emergency.severity,
-        "latitude": live_latitude,
-        "longitude": live_longitude,
-        "ambulance_latitude": live_latitude,
-        "ambulance_longitude": live_longitude,
-        "destination_latitude": hospital.latitude,
-        "destination_longitude": hospital.longitude,
-        "eta_seconds": data.eta_seconds,
-        "eta_basis": "hospital arrival notification",
-        "message": f"Ambulance en route to {hospital.name}. Prepare junction clearance.",
-        "sent_by": str(current_user.id),
-    }
-    if existing_police is None:
-        record_event(db, emergency.id, "POLICE_TRAFFIC_CLEARANCE_REQUESTED", police_payload)
-    else:
-        merged = dict(existing_police.payload or {})
-        merged.update(police_payload)
-        existing_police.payload = merged
-
     record_event(db, emergency.id, "STATUS_CHANGED", {
         "to": "HOSPITAL_ALERTED",
         "reason": "hospital availability requested",
@@ -752,25 +725,6 @@ def update_status(emergency_id: str, data: StatusUpdateRequest, db=Depends(get_d
         ).all():
             request.status = "CLOSED"
     record_event(db, emergency.id, "STATUS_CHANGED", {"status": data.status, "updated_by": str(current_user.id)})
-
-    if data.status == "ARRIVED":
-        ambulance = db.get(Ambulance, emergency.ambulance_id) if emergency.ambulance_id else None
-        hospital = db.get(Hospital, emergency.hospital_id) if emergency.hospital_id else None
-        amb_number = ambulance.vehicle_number if ambulance else "Ambulance"
-        hospital_name = hospital.name if hospital else "Destination Hospital"
-        arrival_payload = {
-            "emergency_id": str(emergency.id),
-            "ambulance_id": str(emergency.ambulance_id) if emergency.ambulance_id else None,
-            "ambulance_number": amb_number,
-            "hospital_id": str(emergency.hospital_id) if emergency.hospital_id else None,
-            "hospital_name": hospital_name,
-            "message": f"Ambulance {amb_number} has successfully arrived at {hospital_name}. Traffic clearance concluded.",
-            "arrived_at": datetime.now(timezone.utc).isoformat(),
-            "status": "ARRIVED",
-            "notified_by": str(current_user.id),
-        }
-        record_event(db, emergency.id, "POLICE_AMBULANCE_ARRIVED", arrival_payload)
-
     db.commit()
     return {"status": data.status, "emergency_id": str(emergency.id)}
 

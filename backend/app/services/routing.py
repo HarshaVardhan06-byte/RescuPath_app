@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import atan2, cos, radians, sin, sqrt
@@ -72,28 +71,6 @@ def _decode_polyline(encoded: str | None) -> list[list[float]]:
         return []
 
     return points
-
-
-def _encode_polyline(points: list[list[float]]) -> str:
-    if not points:
-        return ""
-    result: list[str] = []
-    prev_lat = 0
-    prev_lng = 0
-    for pt in points:
-        lat5 = int(round(pt[0] * 1e5))
-        lng5 = int(round(pt[1] * 1e5))
-        dlat = lat5 - prev_lat
-        dlng = lng5 - prev_lng
-        prev_lat = lat5
-        prev_lng = lng5
-        for val in (dlat, dlng):
-            v = ~(val << 1) if val < 0 else (val << 1)
-            while v >= 0x20:
-                result.append(chr((0x20 | (v & 0x1F)) + 63))
-                v >>= 5
-            result.append(chr(v + 63))
-    return "".join(result)
 
 
 def _haversine_meters(
@@ -380,7 +357,7 @@ class GoogleRoutesProvider(RoutingProvider):
 
 
 class OsrmFallbackProvider(RoutingProvider):
-    """Free public fallback with emergency one-way exemption and real road geometry."""
+    """Free public fallback. Real road geometry/turn steps, but no live traffic."""
 
     async def _compute_routes(
         self,
@@ -389,117 +366,55 @@ class OsrmFallbackProvider(RoutingProvider):
         destination_lat,
         destination_lng,
     ) -> list[dict[str, Any]]:
-        # Compute forward and reverse driving routes concurrently.
-        # Ambulances operate under code-red emergency exemption, meaning they can
-        # travel through one-ways in contraflow when authorized by traffic control.
-        # By evaluating both forward and reverse graph connectivity on the real road network,
-        # the routing engine finds the earliest, easiest, and most direct physical road corridor
-        # without being forced into circuitous civilian one-way detours.
-        url_forward = (
+        url = (
             "https://router.project-osrm.org/route/v1/driving/"
             f"{origin_lng},{origin_lat};{destination_lng},{destination_lat}"
-        )
-        url_reverse = (
-            "https://router.project-osrm.org/route/v1/driving/"
-            f"{destination_lng},{destination_lat};{origin_lng},{origin_lat}"
         )
         params = {
             "overview": "full",
             "geometries": "polyline",
             "steps": "true",
-            "alternatives": "true",
+            "alternatives": "2",
         }
 
         async with httpx.AsyncClient(timeout=15) as client:
-            resp_fwd, resp_rev = await asyncio.gather(
-                client.get(url_forward, params=params),
-                client.get(url_reverse, params=params),
-                return_exceptions=True,
-            )
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
 
-        routes: list[dict[str, Any]] = []
-        if not isinstance(resp_fwd, Exception) and resp_fwd.status_code == 200:
-            for r in resp_fwd.json().get("routes", []):
-                r["_is_reverse_corridor"] = False
-                routes.append(r)
-
-        if not isinstance(resp_rev, Exception) and resp_rev.status_code == 200:
-            for r in resp_rev.json().get("routes", []):
-                r["_is_reverse_corridor"] = True
-                routes.append(r)
-
-        return routes
+        return data.get("routes", [])
 
     def _result(self, route: dict[str, Any], profile: str, rough_exposure: float, alternatives_count: int) -> RouteResult:
-        is_reverse = route.get("_is_reverse_corridor", False)
-        geometry = route.get("geometry")
-        if is_reverse and geometry:
-            pts = _decode_polyline(geometry)
-            forward_pts = pts[::-1]
-            geometry = _encode_polyline(forward_pts)
-
         steps: list[dict] = []
-        legs = route.get("legs", [])
-        if is_reverse:
-            # Build forward steps along the reversed emergency corridor
-            decoded = _decode_polyline(geometry)
-            if decoded:
-                steps.append({
-                    "instruction": "Depart via Emergency Transit Corridor (One-Way Street Exemption)",
-                    "maneuver": "depart",
-                    "latitude": decoded[0][0],
-                    "longitude": decoded[0][1],
-                })
-                step_interval = max(1, len(decoded) // 5)
-                for i in range(step_interval, len(decoded) - step_interval, step_interval):
-                    steps.append({
-                        "instruction": "Continue along priority emergency clearance corridor",
-                        "maneuver": "straight",
-                        "latitude": decoded[i][0],
-                        "longitude": decoded[i][1],
-                    })
-                steps.append({
-                    "instruction": "Arrive at destination medical facility",
-                    "maneuver": "arrive",
-                    "latitude": decoded[-1][0],
-                    "longitude": decoded[-1][1],
-                })
-        else:
-            for leg in legs:
-                for step in leg.get("steps", []):
-                    maneuver = step.get("maneuver", {}) or {}
-                    name = step.get("name")
-                    modifier = maneuver.get("modifier")
-                    step_type = maneuver.get("type")
-                    parts = []
-                    if step_type and step_type != "turn":
-                        parts.append(step_type.replace("_", " ").title())
-                    if modifier:
-                        parts.append(modifier.replace("-", " ").title())
-                    if name:
-                        parts.append(f"onto {name}")
-                    instruction = " ".join(parts)
-                    location = maneuver.get("location") or []
-                    if instruction:
-                        item = {
-                            "instruction": instruction,
-                            "maneuver": modifier or step_type,
-                        }
-                        if len(location) >= 2:
-                            item["longitude"] = location[0]
-                            item["latitude"] = location[1]
-                        steps.append(item)
-
-        route_label = (
-            "Emergency Corridor (One-Way Exemption)"
-            if is_reverse
-            else None
-        )
+        for leg in route.get("legs", []):
+            for step in leg.get("steps", []):
+                maneuver = step.get("maneuver", {}) or {}
+                name = step.get("name")
+                modifier = maneuver.get("modifier")
+                step_type = maneuver.get("type")
+                parts = []
+                if step_type and step_type != "turn":
+                    parts.append(step_type.replace("_", " ").title())
+                if modifier:
+                    parts.append(modifier.replace("-", " ").title())
+                if name:
+                    parts.append(f"onto {name}")
+                instruction = " ".join(parts)
+                location = maneuver.get("location") or []
+                if instruction:
+                    item = {
+                        "instruction": instruction,
+                        "maneuver": modifier or step_type,
+                    }
+                    if len(location) >= 2:
+                        item["longitude"] = location[0]
+                        item["latitude"] = location[1]
+                    steps.append(item)
 
         return RouteResult(
             route.get("distance"),
             int(route["duration"]) if route.get("duration") is not None else None,
-            geometry,
+            route.get("geometry"),
             steps,
             "osrm",
             False,
@@ -508,7 +423,7 @@ class OsrmFallbackProvider(RoutingProvider):
             round(1.0 - rough_exposure, 4) if profile == "comfort_priority" else None,
             rough_exposure if profile == "comfort_priority" else None,
             alternatives_count,
-            route_label,
+            None,
         )
 
     async def route(self, origin_lat, origin_lng, destination_lat, destination_lng):

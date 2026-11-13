@@ -106,9 +106,9 @@ def _social_user(db, email: str, full_name: str | None, role: str | None = None)
                     user_id=user.id,
                     badge_number=f"POL-{badge_suffix}",
                     station_name="Central Police Command",
-                    junction_name=None,
-                    junction_latitude=None,
-                    junction_longitude=None,
+                    junction_name="Central Traffic Junction",
+                    junction_latitude=12.9716,
+                    junction_longitude=77.5946,
                     duty_status="ON_DUTY",
                 )
             )
@@ -159,9 +159,9 @@ def _social_user(db, email: str, full_name: str | None, role: str | None = None)
                     user_id=user.id,
                     badge_number=f"POL-{badge_suffix}",
                     station_name="Central Police Command",
-                    junction_name=None,
-                    junction_latitude=None,
-                    junction_longitude=None,
+                    junction_name="Central Traffic Junction",
+                    junction_latitude=12.9716,
+                    junction_longitude=77.5946,
                     duty_status="ON_DUTY",
                 )
             )

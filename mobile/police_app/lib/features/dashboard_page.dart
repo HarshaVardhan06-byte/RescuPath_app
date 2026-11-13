@@ -74,7 +74,7 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
   bool _isCompletedAlert(Map<String, dynamic> item) {
     if (item['traffic_cleared'] == true) return true;
     final status = (item['status'] ?? item['emergency_status'] ?? '').toString().toUpperCase();
-    return const {'COMPLETED', 'CLOSED', 'CANCELLED', 'RESOLVED'}.contains(status);
+    return const {'ARRIVED', 'COMPLETED', 'CLOSED', 'CANCELLED', 'RESOLVED'}.contains(status);
   }
 
   // Active counts for the 4 hero cards
@@ -147,8 +147,7 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
 
   Future<void> _load() async {
     try {
-      final q = (myLat != null && myLon != null) ? '?lat=$myLat&lon=$myLon' : '';
-      final raw = await api.get('/coordination/police/board$q');
+      final raw = await api.get('/coordination/police/board');
       if (!mounted || raw is! Map) return;
       final next = Map<String, dynamic>.from(raw);
       final allNextAlerts = _list(next['alerts']);
@@ -165,23 +164,11 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
         if (relayKey != null && relayKey.isNotEmpty) {
           incomingNotificationKeys.add('$emergencyKey:relay:$relayKey');
         }
-        final isArrived = alert['is_arrived'] == true || alert['status'] == 'ARRIVED';
-        if (isArrived) {
-          final arrivalId = alert['arrival_notification_id']?.toString() ?? 'arrived';
-          incomingNotificationKeys.add('$emergencyKey:arrived:$arrivalId');
-        }
       }
 
       final newNotificationKeys = _hasLoadedInitialBoard
           ? incomingNotificationKeys.difference(_knownNotificationKeys)
-          : incomingNotificationKeys.where((k) {
-              final idStr = k.split(':').first;
-              final matching = nextAlerts.firstWhere(
-                (a) => a['emergency_id']?.toString() == idStr,
-                orElse: () => <String, dynamic>{},
-              );
-              return matching['police_acknowledged'] != true;
-            }).toSet();
+          : <String>{};
       _knownNotificationKeys = incomingNotificationKeys;
       _hasLoadedInitialBoard = true;
 
@@ -206,35 +193,14 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
       });
 
       if (newNotificationKeys.isNotEmpty) {
-        final arrivalKey = newNotificationKeys.firstWhere(
-          (k) => k.contains(':arrived:'),
-          orElse: () => '',
+        _buzzNewAlert();
+        final newAlertItem = nextAlerts.firstWhere(
+          (a) =>
+              newNotificationKeys.contains('${a['emergency_id']}:alert') ||
+              newNotificationKeys.any((k) => k.startsWith('${a['emergency_id']}:')),
+          orElse: () => nextAlerts.first,
         );
-
-        if (arrivalKey.isNotEmpty) {
-          final arrivedId = arrivalKey.split(':').first;
-          final arrivedAlert = nextAlerts.firstWhere(
-            (a) => a['emergency_id']?.toString() == arrivedId,
-            orElse: () => nextAlerts.first,
-          );
-          _buzzNewAlert();
-          _showAmbulanceArrivalNoticeDialog(arrivedAlert);
-        } else {
-          final newAlertItem = nextAlerts.firstWhere(
-            (a) =>
-                newNotificationKeys.contains('${a['emergency_id']}:alert') ||
-                newNotificationKeys.any((k) => k.startsWith('${a['emergency_id']}:')),
-            orElse: () => nextAlerts.first,
-          );
-          final dist = (newAlertItem['junction_distance_km'] as num?)?.toDouble();
-          final isRelayed = newAlertItem['relayed_to_me'] == true;
-
-          // Strict 1 km rule: Only buzz and notify if within 1.0 km radius (or explicitly relayed)
-          if (isRelayed || dist == null || dist <= 1.0) {
-            _buzzNewAlert();
-            _showIncomingAlertMessageDialog(newAlertItem);
-          }
-        }
+        _showIncomingAlertMessageDialog(newAlertItem);
       }
       if (myLat != null && junctionsUpdated == null) _loadNearbyJunctions();
       if (id != null && (routeData == null || routeData!['emergency_id']?.toString() != id)) {
@@ -294,16 +260,12 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
 
   Future<void> _sendLocation(Position p) async {
     if (!mounted) return;
-    final bool firstFix = myLat == null;
     setState(() {
       myLat = p.latitude;
       myLon = p.longitude;
     });
     try {
       await api.put('/coordination/police/location', {'latitude': p.latitude, 'longitude': p.longitude});
-      if (firstFix) {
-        await _load();
-      }
     } catch (_) {}
   }
 
@@ -619,102 +581,7 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
     }
   }
 
-  void _showAmbulanceArrivalNoticeDialog(Map<String, dynamic> alert) {
-    final ambNumber = alert['ambulance_number']?.toString() ?? 'Ambulance';
-    final hospital = alert['hospital_name']?.toString() ?? 'Destination Hospital';
-    final arrivalTime = alert['arrived_at'] != null
-        ? DateTime.tryParse(alert['arrived_at'].toString())?.toLocal()
-        : DateTime.now();
-    final timeStr = arrivalTime != null
-        ? '${arrivalTime.hour.toString().padLeft(2, '0')}:${arrivalTime.minute.toString().padLeft(2, '0')}'
-        : 'Just now';
-    final junction = alert['junction_name']?.toString() ?? 'your junction';
 
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: LuxuryTheme.green.withValues(alpha: .15),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.check_circle_rounded, color: LuxuryTheme.green, size: 28),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '🚑 AMBULANCE ARRIVAL NOTICE',
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: LuxuryTheme.green),
-                  ),
-                  Text('Successful hospital arrival confirmed', style: TextStyle(color: LuxuryTheme.muted, fontSize: 11)),
-                ],
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: LuxuryTheme.green.withValues(alpha: .06),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: LuxuryTheme.green.withValues(alpha: .25)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Ambulance $ambNumber has safely arrived at $hospital!',
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: LuxuryTheme.ink),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Emergency patient intake has commenced. Traffic clearance along $junction is concluded.',
-                    style: const TextStyle(color: LuxuryTheme.muted, fontSize: 12),
-                  ),
-                  const Divider(height: 18),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Arrival Time: $timeStr', style: const TextStyle(fontWeight: FontWeight.w800, color: LuxuryTheme.green, fontSize: 12)),
-                      const Text('Status: ARRIVED', style: TextStyle(fontWeight: FontWeight.w800, color: LuxuryTheme.green, fontSize: 12)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: LuxuryTheme.green,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(vertical: 13),
-              ),
-              onPressed: () => Navigator.of(dialogCtx).pop(),
-              child: const Text('Clearance Concluded / Dismiss', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _showIncomingAlertMessageDialog(Map<String, dynamic> alert) {
     final ambNumber = alert['ambulance_number']?.toString() ?? 'Ambulance';
@@ -1735,7 +1602,6 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
     final id = a['emergency_id']?.toString() ?? '';
     final completed = _isCompletedAlert(a);
     final inHistory = activeFilter == 'HISTORY' || completed;
-    final isArrived = a['is_arrived'] == true || a['status'] == 'ARRIVED';
     return InkWell(
       onTap: inHistory
           ? () {
@@ -1810,17 +1676,11 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        isArrived
-                            ? '✅ AMBULANCE ARRIVED AT HOSPITAL • CLEARANCE COMPLETE'
-                            : a['relayed_to_me'] == true
-                                ? 'RELAYED TO YOUR JUNCTION • ETA ${_duration(a['junction_eta_seconds'])}'
-                                : 'Junction ETA ${_duration(a['junction_eta_seconds'])} • hospital ETA ${_duration(a['eta_seconds'])}',
+                        a['relayed_to_me'] == true
+                            ? 'RELAYED TO YOUR JUNCTION • ETA ${_duration(a['junction_eta_seconds'])}'
+                            : 'Junction ETA ${_duration(a['junction_eta_seconds'])} • hospital ETA ${_duration(a['eta_seconds'])}',
                         style: TextStyle(
-                          color: isArrived
-                              ? LuxuryTheme.green
-                              : a['relayed_to_me'] == true
-                                  ? LuxuryTheme.amber
-                                  : LuxuryTheme.blue,
+                          color: a['relayed_to_me'] == true ? LuxuryTheme.amber : LuxuryTheme.blue,
                           fontWeight: FontWeight.w800,
                           fontSize: 10,
                         ),
@@ -1843,35 +1703,6 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                   ),
               ],
             ),
-            if (isArrived) ...[
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                decoration: BoxDecoration(
-                  color: LuxuryTheme.green.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: LuxuryTheme.green.withValues(alpha: .3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.check_circle_rounded, color: LuxuryTheme.green, size: 16),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        a['arrival_message']?.toString() ??
-                            'Ambulance has safely arrived at ${a['hospital_name'] ?? 'hospital'}. Traffic clearance concluded.',
-                        style: const TextStyle(
-                          color: LuxuryTheme.green,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
             if (!completed) ...[
               const SizedBox(height: 12),
               Wrap(
