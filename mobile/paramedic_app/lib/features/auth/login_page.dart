@@ -54,7 +54,11 @@ class _LoginPageState extends State<LoginPage> {
         serverClientId: kIsWeb ? null : AppConfig.googleWebClientId,
         scopes: const ['email', 'profile'],
       );
-      final account = await google.signIn();
+      GoogleSignInAccount? account;
+      try {
+        account = await google.signInSilently();
+      } catch (_) {}
+      account ??= await google.signIn();
       if (account == null) {
         setState(() => loading = false);
         return;
@@ -77,7 +81,7 @@ class _LoginPageState extends State<LoginPage> {
       if (mounted) {
         final err = e.toString().replaceFirst('Exception: ', '');
         if (err.contains('People API') || err.contains('people.googleapis.com')) {
-          setState(() => error = 'Google People API must be enabled for project 1084797807505. Visit: console.developers.google.com/apis/api/people.googleapis.com/overview?project=1084797807505');
+          setState(() => error = 'Google People API is disabled on project 1084797807505. Enable it here: https://console.cloud.google.com/apis/library/people.googleapis.com?project=1084797807505');
         } else {
           setState(() => error = err);
         }

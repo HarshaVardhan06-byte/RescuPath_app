@@ -714,8 +714,11 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
           final isMobile = screenWidth < 620;
 
           return AlertDialog(
-            insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
+            insetPadding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 20, vertical: 16),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            actionsAlignment: MainAxisAlignment.end,
+            actionsOverflowDirection: VerticalDirection.down,
+            actionsOverflowButtonSpacing: 8,
             title: Row(
               children: [
                 const Icon(Icons.health_and_safety_rounded, color: LuxuryTheme.blue, size: 26),
@@ -1722,23 +1725,23 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                           const SizedBox(height: 16),
 
                           // Emergency Arrivals Filter Banner
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(26),
-                              gradient: const LinearGradient(
-                                  colors: [Color(0xFF1D70F5), Color(0xFF59A4FF)],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight),
-                              boxShadow: const [
-                                BoxShadow(color: Color(0x222477FF), blurRadius: 22, offset: Offset(0, 8))
-                              ],
-                            ),
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              LayoutBuilder(
-                                builder: (context, heroBox) {
-                                  final isMobile = heroBox.maxWidth < 650;
-                                  return Row(
+                          LayoutBuilder(
+                            builder: (context, heroBox) {
+                              final isMobile = heroBox.maxWidth < 650;
+                              return Container(
+                                padding: EdgeInsets.all(isMobile ? 14 : 20),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(isMobile ? 20 : 26),
+                                  gradient: const LinearGradient(
+                                      colors: [Color(0xFF1D70F5), Color(0xFF59A4FF)],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight),
+                                  boxShadow: const [
+                                    BoxShadow(color: Color(0x222477FF), blurRadius: 22, offset: Offset(0, 8))
+                                  ],
+                                ),
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Row(
                                     children: [
                                       Expanded(
                                         child: Text(
@@ -1763,65 +1766,66 @@ class _HospitalDashboardPageState extends State<HospitalDashboardPage> {
                                                 color: Colors.white, fontWeight: FontWeight.w800, fontSize: 10.5)),
                                       ),
                                     ],
-                                  );
-                                },
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                  '$pendingCount Pending Arrival Orders • $historyCount Records in History Archive • ${h['hospital_name'] ?? 'Your facility'}',
-                                  style: TextStyle(color: Colors.white.withValues(alpha: .88), fontSize: 12)),
-                              const SizedBox(height: 17),
-                              LayoutBuilder(builder: (context, constraints) {
-                                final wide = constraints.maxWidth >= 650;
-                                final width = wide ? (constraints.maxWidth - 24) / 4 : (constraints.maxWidth - 8) / 2;
-                                return Wrap(spacing: 8, runSpacing: 8, children: [
-                                  SizedBox(
-                                    width: width,
-                                    child: _filterCard(
-                                      label: 'Pending',
-                                      count: '$pendingCount',
-                                      icon: Icons.pending_actions_rounded,
-                                      color: LuxuryTheme.red,
-                                      isSelected: activeFilter == 'PENDING',
-                                      onTap: () => setState(() => activeFilter = 'PENDING'),
-                                    ),
                                   ),
-                                  SizedBox(
-                                    width: width,
-                                    child: _filterCard(
-                                      label: 'Accepted',
-                                      count: '$acceptedCount',
-                                      icon: Icons.check_circle_rounded,
-                                      color: LuxuryTheme.green,
-                                      isSelected: activeFilter == 'ACCEPTED',
-                                      onTap: () => setState(() => activeFilter = 'ACCEPTED'),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: width,
-                                    child: _filterCard(
-                                      label: 'Declined',
-                                      count: '$declinedCount',
-                                      icon: Icons.cancel_rounded,
-                                      color: LuxuryTheme.amber,
-                                      isSelected: activeFilter == 'DECLINED',
-                                      onTap: () => setState(() => activeFilter = 'DECLINED'),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: width,
-                                    child: _filterCard(
-                                      label: 'History',
-                                      count: '$historyCount',
-                                      icon: Icons.history_rounded,
-                                      color: LuxuryTheme.blue,
-                                      isSelected: activeFilter == 'HISTORY',
-                                      onTap: () => setState(() => activeFilter = 'HISTORY'),
-                                    ),
-                                  ),
-                                ]);
-                              }),
-                            ]),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                      '$pendingCount Pending Arrival Orders • $historyCount Records in History Archive • ${h['hospital_name'] ?? 'Your facility'}',
+                                      softWrap: true,
+                                      style: TextStyle(color: Colors.white.withValues(alpha: .88), fontSize: isMobile ? 11 : 12)),
+                                  const SizedBox(height: 17),
+                                  LayoutBuilder(builder: (context, constraints) {
+                                    final wide = constraints.maxWidth >= 650;
+                                    final width = wide ? (constraints.maxWidth - 24) / 4 : (constraints.maxWidth - 8) / 2;
+                                    return Wrap(spacing: 8, runSpacing: 8, children: [
+                                      SizedBox(
+                                        width: width,
+                                        child: _filterCard(
+                                          label: 'Pending',
+                                          count: '$pendingCount',
+                                          icon: Icons.pending_actions_rounded,
+                                          color: LuxuryTheme.red,
+                                          isSelected: activeFilter == 'PENDING',
+                                          onTap: () => setState(() => activeFilter = 'PENDING'),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: width,
+                                        child: _filterCard(
+                                          label: 'Accepted',
+                                          count: '$acceptedCount',
+                                          icon: Icons.check_circle_rounded,
+                                          color: LuxuryTheme.green,
+                                          isSelected: activeFilter == 'ACCEPTED',
+                                          onTap: () => setState(() => activeFilter = 'ACCEPTED'),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: width,
+                                        child: _filterCard(
+                                          label: 'Declined',
+                                          count: '$declinedCount',
+                                          icon: Icons.cancel_rounded,
+                                          color: LuxuryTheme.amber,
+                                          isSelected: activeFilter == 'DECLINED',
+                                          onTap: () => setState(() => activeFilter = 'DECLINED'),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: width,
+                                        child: _filterCard(
+                                          label: 'History',
+                                          count: '$historyCount',
+                                          icon: Icons.history_rounded,
+                                          color: LuxuryTheme.blue,
+                                          isSelected: activeFilter == 'HISTORY',
+                                          onTap: () => setState(() => activeFilter = 'HISTORY'),
+                                        ),
+                                      ),
+                                    ]);
+                                  }),
+                                ]),
+                              );
+                            },
                           ),
                           if (error != null) ...[const SizedBox(height: 12), _message(error!, LuxuryTheme.red)],
                           const SizedBox(height: 21),

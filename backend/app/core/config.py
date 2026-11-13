@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_from: str | None = None
+    resend_api_key: str | None = None
     reset_base_url: str = "http://localhost:8080"
     allow_public_operations_registration: bool = True
 

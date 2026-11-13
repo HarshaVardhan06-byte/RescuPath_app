@@ -1142,26 +1142,26 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                             _buildOfflineState()
                           else ...[
                             // Hero Command Banner with 4 Clickable Metric Filter Cards
-                            Container(
-                              padding: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(26),
-                                gradient: const LinearGradient(
-                                  colors: [LuxuryTheme.navy, Color(0xFF1A3B69)],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                boxShadow: const [
-                                  BoxShadow(color: Color(0x220A1930), blurRadius: 22, offset: Offset(0, 8)),
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  LayoutBuilder(
-                                    builder: (context, heroBox) {
-                                      final isMobile = heroBox.maxWidth < 650;
-                                      return Column(
+                            LayoutBuilder(
+                              builder: (context, heroBox) {
+                                final isMobile = heroBox.maxWidth < 650;
+                                return Container(
+                                  padding: EdgeInsets.all(isMobile ? 14 : 20),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(isMobile ? 20 : 26),
+                                    gradient: const LinearGradient(
+                                      colors: [LuxuryTheme.navy, Color(0xFF1A3B69)],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    boxShadow: const [
+                                      BoxShadow(color: Color(0x220A1930), blurRadius: 22, offset: Offset(0, 8)),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
@@ -1177,17 +1177,14 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                                           const SizedBox(height: 4),
                                           Text(
                                             'Clear traffic corridors. Save emergency response lives.',
+                                            softWrap: true,
                                             style: TextStyle(
                                               color: const Color(0xCCFFFFFF),
                                               fontSize: isMobile ? 11 : 12,
                                             ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         ],
-                                      );
-                                    },
-                                  ),
+                                      ),
                                   const SizedBox(height: 17),
                                   // Clickable 4-card Hero Filter Matrix
                                   LayoutBuilder(builder: (context, constraints) {
@@ -1243,7 +1240,9 @@ class _PoliceDashboardPageState extends State<PoliceDashboardPage> {
                                   }),
                                 ],
                               ),
-                            ),
+                            );
+                          },
+                        ),
 
                             if (error != null) ...[
                               const SizedBox(height: 12),

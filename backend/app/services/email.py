@@ -2,59 +2,193 @@ from email.message import EmailMessage
 import logging
 import os
 import smtplib
+from typing import Any
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-def send_password_reset_email(recipient: str, token: str) -> bool:
-    smtp_host = settings.smtp_host or os.getenv("SMTP_HOST") or "smtp.gmail.com"
-    smtp_port = settings.smtp_port or int(os.getenv("SMTP_PORT", "587"))
-    smtp_username = settings.smtp_username or os.getenv("SMTP_USERNAME") or os.getenv("GMAIL_USER")
-    smtp_password = settings.smtp_password or os.getenv("SMTP_PASSWORD") or os.getenv("GMAIL_APP_PASSWORD")
-    smtp_from = settings.smtp_from or os.getenv("SMTP_FROM") or smtp_username
+def _mask_email(email: str | None) -> str:
+    """Mask email for safe diagnostic logging without exposing full identity."""
+    if not email or "@" not in email:
+        return "[not configured]"
+    parts = email.strip().split("@")
+    name, domain = parts[0], parts[1]
+    masked_name = name[0] + "***" + (name[-1] if len(name) > 1 else "")
+    return f"{masked_name}@{domain}"
 
-    if not all([smtp_host, smtp_username, smtp_password, smtp_from]):
-        logger.warning("SMTP is not fully configured; skipping email dispatch.")
-        return False
 
+def get_smtp_config() -> dict[str, Any]:
+    """Retrieve and sanitize SMTP configuration without exposing secrets."""
+    host = (os.getenv("SMTP_HOST") or settings.smtp_host or "smtp.gmail.com").strip()
+    raw_port = os.getenv("SMTP_PORT") or settings.smtp_port or 465
     try:
-        message = EmailMessage()
-        message["Subject"] = "RescuPath Password Reset"
-        message["From"] = smtp_from
-        message["To"] = recipient
-        link = f"{settings.reset_base_url}/reset-password?token={token}"
-        message.set_content(f"Reset your RescuPath password using this link:\n{link}\n\nThis link expires in 30 minutes.")
+        port = int(raw_port)
+    except (ValueError, TypeError):
+        port = 465
 
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
-            server.starttls()
-            server.login(smtp_username, smtp_password)
-            server.send_message(message)
-        return True
-    except Exception as e:
-        logger.error(f"Failed to send password reset email to {recipient}: {e}")
-        return False
-
-
-def send_password_reset_otp_email(recipient: str, otp: str, user_name: str | None = None) -> bool:
-    smtp_host = settings.smtp_host or os.getenv("SMTP_HOST") or "smtp.gmail.com"
-    smtp_port = settings.smtp_port or int(os.getenv("SMTP_PORT", "587"))
-    smtp_username = (
-        settings.smtp_username
-        or os.getenv("SMTP_USERNAME")
+    raw_user = (
+        os.getenv("SMTP_USERNAME")
         or os.getenv("SMTP_USER")
         or os.getenv("GMAIL_USER")
         or os.getenv("GMAIL_USERNAME")
         or os.getenv("GMAIL_ADDRESS")
+        or settings.smtp_username
     )
-    smtp_password = (
-        settings.smtp_password
-        or os.getenv("SMTP_PASSWORD")
+    raw_pass = (
+        os.getenv("SMTP_PASSWORD")
         or os.getenv("SMTP_PASS")
         or os.getenv("GMAIL_APP_PASSWORD")
         or os.getenv("GMAIL_PASSWORD")
+        or settings.smtp_password
     )
-    smtp_from = settings.smtp_from or os.getenv("SMTP_FROM") or smtp_username or "noreply@rescupath.org"
+    raw_from = (
+        os.getenv("SMTP_FROM")
+        or settings.smtp_from
+    )
+
+    username = str(raw_user).strip() if raw_user else None
+    # Strip spaces from Google App Passwords (e.g. 'abcd efgh ijkl mnop' -> 'abcdefghijklmnop')
+    password = str(raw_pass).strip().replace(" ", "") if raw_pass else None
+
+    # Sender address defaults to authenticated username for Gmail SPF/DMARC compatibility
+    from_addr = str(raw_from).strip() if raw_from else (username or "noreply@rescupath.org")
+    if username and "@gmail.com" in username.lower() and "@gmail.com" not in from_addr.lower():
+        from_addr = username
+
+    resend_key = os.getenv("RESEND_API_KEY") or getattr(settings, "resend_api_key", None)
+
+    return {
+        "host": host,
+        "port": port,
+        "username": username,
+        "password": password,
+        "from_addr": from_addr,
+        "resend_key": str(resend_key).strip() if resend_key else None,
+        "is_smtp_configured": bool(host and username and password),
+        "is_https_configured": bool(resend_key),
+    }
+
+
+def _dispatch_message(message: EmailMessage, recipient: str, plain_content: str, html_content: str) -> bool:
+    """Deliver an email message using HTTPS API (if configured) or direct SMTP."""
+    cfg = get_smtp_config()
+    masked_to = _mask_email(recipient)
+    masked_from = _mask_email(cfg["from_addr"])
+    masked_user = _mask_email(cfg["username"])
+
+    logger.info(f"[EMAIL_DISPATCH] Initiating email delivery to {masked_to} (from={masked_from})")
+
+    # 1. Check for HTTPS API fallback (Resend over Port 443 - bypasses cloud SMTP port blocks)
+    if cfg["is_https_configured"]:
+        try:
+            logger.info(f"[EMAIL_HTTPS] Attempting HTTPS email delivery via Resend API (Port 443) to {masked_to}")
+            import httpx
+            with httpx.Client(timeout=10) as client:
+                res = client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {cfg['resend_key']}"},
+                    json={
+                        "from": f"RescuPath <{cfg['from_addr']}>" if "<" not in cfg["from_addr"] else cfg["from_addr"],
+                        "to": [recipient],
+                        "subject": str(message["Subject"]),
+                        "html": html_content,
+                        "text": plain_content,
+                    },
+                )
+                if res.status_code in (200, 201):
+                    logger.info(f"[EMAIL_SUCCESS] Email delivered successfully to {masked_to} via HTTPS API (Port 443)")
+                    return True
+                else:
+                    logger.warning(f"[EMAIL_HTTPS_FAIL] Resend API responded with status {res.status_code}: {res.text}")
+        except Exception as https_err:
+            logger.warning(f"[EMAIL_HTTPS_ERROR] HTTPS dispatch error: {type(https_err).__name__}: {https_err}")
+
+    # 2. Check SMTP credentials
+    if not cfg["is_smtp_configured"]:
+        logger.warning(
+            f"[EMAIL_UNCONFIGURED] SMTP is not fully configured (missing SMTP_USERNAME or SMTP_PASSWORD). "
+            f"Cannot dispatch email to {masked_to}."
+        )
+        return False
+
+    smtp_host = cfg["host"]
+    configured_port = cfg["port"]
+    smtp_username = cfg["username"]
+    smtp_password = cfg["password"]
+
+    # Determine connection candidates: Port 465 MUST use SSL; Port 587 MUST use STARTTLS
+    candidates: list[tuple[int, bool]] = []
+    if configured_port == 465:
+        candidates = [(465, True), (587, False)]
+    elif configured_port == 587:
+        candidates = [(587, False), (465, True)]
+    else:
+        candidates = [(configured_port, False), (465, True), (587, False)]
+
+    last_error: Exception | None = None
+    timeout_seconds = 6
+
+    for port, use_ssl in candidates:
+        try:
+            logger.info(
+                f"[EMAIL_SMTP_CONNECT] Connecting to {smtp_host}:{port} "
+                f"(ssl={use_ssl}, auth_user={masked_user}, timeout={timeout_seconds}s)"
+            )
+            if use_ssl:
+                with smtplib.SMTP_SSL(smtp_host, port, timeout=timeout_seconds) as server:
+                    logger.info(f"[EMAIL_SMTP_AUTH] Authenticating with {smtp_host}:{port}...")
+                    server.login(smtp_username, smtp_password)
+                    logger.info(f"[EMAIL_SMTP_SEND] Sending message to {masked_to}...")
+                    server.send_message(message, from_addr=smtp_username)
+                    logger.info(f"[EMAIL_SUCCESS] Successfully delivered email to {masked_to} via {smtp_host}:{port} (SSL)")
+                    return True
+            else:
+                with smtplib.SMTP(smtp_host, port, timeout=timeout_seconds) as server:
+                    logger.info(f"[EMAIL_SMTP_STARTTLS] Issuing STARTTLS on {smtp_host}:{port}...")
+                    server.starttls()
+                    logger.info(f"[EMAIL_SMTP_AUTH] Authenticating with {smtp_host}:{port}...")
+                    server.login(smtp_username, smtp_password)
+                    logger.info(f"[EMAIL_SMTP_SEND] Sending message to {masked_to}...")
+                    server.send_message(message, from_addr=smtp_username)
+                    logger.info(f"[EMAIL_SUCCESS] Successfully delivered email to {masked_to} via {smtp_host}:{port} (STARTTLS)")
+                    return True
+
+        except smtplib.SMTPAuthenticationError as auth_err:
+            last_error = auth_err
+            logger.error(
+                f"[EMAIL_AUTH_FAIL] SMTP Authentication failed on {smtp_host}:{port} for {masked_user}. "
+                f"Reason: {auth_err}. "
+                f"Verify: 1) SMTP_USERNAME is the full Gmail address, 2) SMTP_PASSWORD is a valid 16-character Google App Password (not account password), 3) 2-Step Verification is enabled on the Google Account."
+            )
+            # Bad credentials won't succeed on other ports
+            break
+
+        except (TimeoutError, smtplib.SMTPConnectError, OSError) as net_err:
+            last_error = net_err
+            logger.warning(
+                f"[EMAIL_PORT_BLOCKED] Connection to {smtp_host}:{port} failed ({type(net_err).__name__}: {net_err}). "
+                f"Note: Free-tier instances on Render block outbound SMTP ports 25, 465, and 587. "
+                f"Render requires upgrading to Starter ($7/mo) to open ports 465/587, or using an HTTPS API."
+            )
+            continue
+
+        except Exception as gen_err:
+            last_error = gen_err
+            logger.warning(f"[EMAIL_SMTP_FAIL] SMTP attempt on {smtp_host}:{port} failed: {type(gen_err).__name__}: {gen_err}")
+            continue
+
+    logger.error(
+        f"[EMAIL_DISPATCH_FAILED] All delivery attempts to {masked_to} failed. "
+        f"Final error: {type(last_error).__name__}: {last_error}"
+    )
+    return False
+
+
+def send_password_reset_otp_email(recipient: str, otp: str, user_name: str | None = None) -> bool:
+    cfg = get_smtp_config()
+    sender = cfg["from_addr"]
+    from_header = f"RescuPath <{sender}>" if "<" not in sender else sender
 
     greeting = f"Hello {user_name}," if user_name else "Hello,"
     plain_content = (
@@ -103,46 +237,46 @@ def send_password_reset_otp_email(recipient: str, otp: str, user_name: str | Non
     </html>
     """
 
-    if not all([smtp_host, smtp_username, smtp_password]):
-        logger.warning(f"SMTP credentials missing. Mocked OTP delivery for {recipient}: OTP={otp}")
-        return False
+    message = EmailMessage()
+    message["Subject"] = f"RescuPath Security: Your Password Reset OTP is {otp}"
+    message["From"] = from_header
+    message["To"] = recipient
+    message.set_content(plain_content)
+    message.add_alternative(html_content, subtype="html")
 
-    try:
-        message = EmailMessage()
-        message["Subject"] = f"RescuPath Security: Your Password Reset OTP is {otp}"
-        message["From"] = smtp_from
-        message["To"] = recipient
-        message.set_content(plain_content)
-        message.add_alternative(html_content, subtype="html")
+    return _dispatch_message(message, recipient, plain_content, html_content)
 
-        # Try SSL on port 465 first (more reliable on cloud hosts), fallback to STARTTLS on 587
-        delivered = False
-        last_error = None
-        for port, use_ssl in [(465, True), (smtp_port, False), (587, False)]:
-            try:
-                if use_ssl:
-                    with smtplib.SMTP_SSL(smtp_host, port, timeout=8) as server:
-                        server.login(smtp_username, smtp_password)
-                        server.send_message(message)
-                        delivered = True
-                        break
-                else:
-                    with smtplib.SMTP(smtp_host, port, timeout=8) as server:
-                        server.starttls()
-                        server.login(smtp_username, smtp_password)
-                        server.send_message(message)
-                        delivered = True
-                        break
-            except Exception as conn_err:
-                last_error = conn_err
-                continue
 
-        if delivered:
-            logger.info(f"Successfully delivered password reset OTP email to {recipient}")
-            return True
-        else:
-            logger.error(f"Failed to dispatch email to {recipient} across SMTP ports: {last_error}")
-            return False
-    except Exception as e:
-        logger.error(f"Failed to dispatch password reset OTP email to {recipient}: {e}")
-        return False
+def send_password_reset_email(recipient: str, token: str) -> bool:
+    cfg = get_smtp_config()
+    sender = cfg["from_addr"]
+    from_header = f"RescuPath <{sender}>" if "<" not in sender else sender
+
+    link = f"{settings.reset_base_url}/reset-password?token={token}"
+    plain_content = (
+        f"Reset your RescuPath password using this link:\n{link}\n\n"
+        f"This link expires in 30 minutes."
+    )
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: sans-serif; background-color: #0A1930; color: #FFFFFF; padding: 24px;">
+      <div style="background: #112240; border-radius: 12px; max-width: 500px; margin: 0 auto; padding: 24px;">
+        <h2 style="color: #00A8E8;">RescuPath Password Reset</h2>
+        <p>Click below to reset your password:</p>
+        <p><a href="{link}" style="display: inline-block; background: #00A8E8; color: #FFFFFF; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: bold;">Reset Password</a></p>
+        <p style="font-size: 12px; color: #64748B;">This link expires in 30 minutes.</p>
+      </div>
+    </body>
+    </html>
+    """
+
+    message = EmailMessage()
+    message["Subject"] = "RescuPath Password Reset"
+    message["From"] = from_header
+    message["To"] = recipient
+    message.set_content(plain_content)
+    message.add_alternative(html_content, subtype="html")
+
+    return _dispatch_message(message, recipient, plain_content, html_content)

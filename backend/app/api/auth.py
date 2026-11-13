@@ -1,4 +1,5 @@
 import hashlib
+import os
 import secrets
 
 from datetime import datetime, timedelta, timezone
@@ -576,7 +577,7 @@ def forgot_password(
         "expires_in_minutes": 15,
         "email_sent": sent,
     }
-    if settings.debug or settings.environment in {"test", "development", "local"}:
+    if os.getenv("PYTEST_CURRENT_TEST") or settings.environment == "test":
         res["otp"] = otp
     return res
 
